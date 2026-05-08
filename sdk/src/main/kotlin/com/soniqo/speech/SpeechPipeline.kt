@@ -11,6 +11,9 @@ import kotlinx.coroutines.flow.asSharedFlow
  * Wraps speech-core (C++) via JNI. All inference runs locally via ONNX Runtime
  * with NNAPI acceleration on Qualcomm Snapdragon / Samsung Exynos.
  *
+ * Construct via `SpeechPipeline(config)`. Tests can supply their own
+ * implementation of this interface to avoid loading the native library.
+ *
  * Usage:
  * ```
  * val pipeline = SpeechPipeline(config)
@@ -21,15 +24,41 @@ import kotlinx.coroutines.flow.asSharedFlow
  * pipeline.close()
  * ```
  */
-class SpeechPipeline(private val config: SpeechConfig) : AutoCloseable {
+interface SpeechPipeline : AutoCloseable {
+
+    /** Stream of pipeline events (speech start/end, transcriptions, audio). */
+    val events: SharedFlow<SpeechEvent>
+
+    val state: PipelineState
+
+    /**
+     * Non-null if NNAPI failed during model loading and the engine fell back to CPU.
+     * Contains the NNAPI error message. Useful for diagnostics — ask users to report this.
+     */
+    val nnapiFallbackReason: String?
+
+    fun start()
+    fun stop()
+
+    /** Feed PCM Float32 microphone samples at 16 kHz. */
+    fun pushAudio(samples: FloatArray)
+
+    /** Signal that response playback finished — resume listening. */
+    fun resumeListening()
+
+    companion object {
+        operator fun invoke(config: SpeechConfig): SpeechPipeline = SpeechPipelineImpl(config)
+    }
+}
+
+internal class SpeechPipelineImpl(config: SpeechConfig) : SpeechPipeline {
 
     private val _events = MutableSharedFlow<SpeechEvent>(
         extraBufferCapacity = 64,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
 
-    /** Stream of pipeline events (speech start/end, transcriptions, audio). */
-    val events: SharedFlow<SpeechEvent> = _events.asSharedFlow()
+    override val events: SharedFlow<SpeechEvent> = _events.asSharedFlow()
 
     private val nativeCallback = object : NativeBridge.EventCallback {
         override fun onEvent(
@@ -68,31 +97,25 @@ class SpeechPipeline(private val config: SpeechConfig) : AutoCloseable {
         )
     }
 
-    val state: PipelineState
+    override val state: PipelineState
         get() = PipelineState.from(NativeBridge.nativeGetState(handle))
 
-    /**
-     * Non-null if NNAPI failed during model loading and the engine fell back to CPU.
-     * Contains the NNAPI error message. Useful for diagnostics — ask users to report this.
-     */
-    val nnapiFallbackReason: String?
+    override val nnapiFallbackReason: String?
         get() = NativeBridge.nativeNnapiFallbackReason()
 
-    fun start() {
+    override fun start() {
         NativeBridge.nativeStart(handle)
     }
 
-    fun stop() {
+    override fun stop() {
         NativeBridge.nativeStop(handle)
     }
 
-    /** Feed PCM Float32 microphone samples at 16 kHz. */
-    fun pushAudio(samples: FloatArray) {
+    override fun pushAudio(samples: FloatArray) {
         NativeBridge.nativePushAudio(handle, samples, samples.size)
     }
 
-    /** Signal that response playback finished — resume listening. */
-    fun resumeListening() {
+    override fun resumeListening() {
         NativeBridge.nativeResumeListen(handle)
     }
 

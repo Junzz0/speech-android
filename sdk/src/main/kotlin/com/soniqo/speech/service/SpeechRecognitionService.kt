@@ -40,8 +40,12 @@ import java.util.concurrent.atomic.AtomicBoolean
  * The service reads the microphone itself via [AudioRecord] — callers do not
  * push audio. `EXTRA_LANGUAGE` is currently logged but not enforced; Parakeet
  * v3 auto-detects across 114 languages.
+ *
+ * Open for test subclassing: [createPipeline], [resolveModelDir], and
+ * [newAudioRecord] are protected seams so JVM unit tests can run without
+ * loading the native library or opening a real microphone.
  */
-class SpeechRecognitionService : RecognitionService() {
+open class SpeechRecognitionService : RecognitionService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -91,30 +95,21 @@ class SpeechRecognitionService : RecognitionService() {
         val pipeline: SpeechPipeline
         val record: AudioRecord
         try {
-            val modelDir = ModelManager.ensureModels(this, ModelPrecision.INT8)
-            pipeline = SpeechPipeline(
+            val modelDir = resolveModelDir()
+            pipeline = createPipeline(
                 SpeechConfig(
                     modelDir = modelDir,
                     emitPartialTranscriptions = wantPartial,
                 )
             )
 
-            val sampleRate = 16_000
-            val minBuf = AudioRecord.getMinBufferSize(
-                sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_FLOAT
-            )
-            if (minBuf <= 0) {
+            val newRecord = newAudioRecord()
+            if (newRecord == null) {
                 listener.error(SpeechRecognizer.ERROR_AUDIO)
                 pipeline.close()
                 return
             }
-            record = AudioRecord(
-                MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                sampleRate,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_FLOAT,
-                minBuf * 4,
-            )
+            record = newRecord
             if (record.state != AudioRecord.STATE_INITIALIZED) {
                 listener.error(SpeechRecognizer.ERROR_AUDIO)
                 record.release()
@@ -244,6 +239,34 @@ class SpeechRecognitionService : RecognitionService() {
         is java.io.IOException -> SpeechRecognizer.ERROR_NETWORK
         is SecurityException -> SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS
         else -> SpeechRecognizer.ERROR_SERVER
+    }
+
+    /** Build the pipeline. Overridden in tests to inject a fake. */
+    protected open fun createPipeline(config: SpeechConfig): SpeechPipeline =
+        SpeechPipeline(config)
+
+    /** Resolve the model directory. Overridden in tests to skip the download. */
+    protected open suspend fun resolveModelDir(): String =
+        ModelManager.ensureModels(this, ModelPrecision.INT8)
+
+    /**
+     * Open the microphone. Returns null when the format is unsupported on this
+     * device (negative [AudioRecord.getMinBufferSize]). Overridden in tests so
+     * Robolectric doesn't have to stand up a real recorder.
+     */
+    protected open fun newAudioRecord(): AudioRecord? {
+        val sampleRate = 16_000
+        val minBuf = AudioRecord.getMinBufferSize(
+            sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_FLOAT
+        )
+        if (minBuf <= 0) return null
+        return AudioRecord(
+            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            sampleRate,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_FLOAT,
+            minBuf * 4,
+        )
     }
 
     companion object {
