@@ -21,8 +21,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Exposes [SpeechPipeline] via Android's [RecognitionService] API so any app
@@ -45,6 +48,11 @@ class SpeechRecognitionService : RecognitionService() {
     @Volatile
     private var session: Session? = null
 
+    // Synchronously claimed in onStartListening before the suspending setup
+    // begins, so a second start request rejects with BUSY instead of racing to
+    // create a parallel session that leaks AudioRecord and the pipeline.
+    private val starting = AtomicBoolean(false)
+
     private class Session(
         val pipeline: SpeechPipeline,
         val audioRecord: AudioRecord,
@@ -53,13 +61,13 @@ class SpeechRecognitionService : RecognitionService() {
     )
 
     override fun onStartListening(recognizerIntent: Intent?, listener: Callback) {
-        if (session != null) {
-            listener.error(SpeechRecognizer.ERROR_RECOGNIZER_BUSY)
-            return
-        }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED) {
             listener.error(SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS)
+            return
+        }
+        if (session != null || !starting.compareAndSet(false, true)) {
+            listener.error(SpeechRecognizer.ERROR_RECOGNIZER_BUSY)
             return
         }
 
@@ -70,7 +78,13 @@ class SpeechRecognitionService : RecognitionService() {
             Log.i(TAG, "EXTRA_LANGUAGE=$requestedLang (auto-detected by STT, hint not enforced)")
         }
 
-        scope.launch { startSession(listener, wantPartial) }
+        scope.launch {
+            try {
+                startSession(listener, wantPartial)
+            } finally {
+                starting.set(false)
+            }
+        }
     }
 
     private suspend fun startSession(listener: Callback, wantPartial: Boolean) {
@@ -181,11 +195,20 @@ class SpeechRecognitionService : RecognitionService() {
     }
 
     override fun onStopListening(listener: Callback) {
-        // Stop reading the mic but let the pipeline flush so VAD detects
-        // end-of-utterance and emits the final TranscriptionCompleted event.
+        // nativeStop does not flush — VAD only detects end-of-utterance from
+        // silence in the audio stream. After cutting the mic, push ~1 s of
+        // zeros so the pipeline emits its final TranscriptionCompleted event.
         val s = session ?: return
-        s.micJob.cancel()
         runCatching { s.audioRecord.stop() }
+        scope.launch {
+            s.micJob.cancelAndJoin()
+            val silence = FloatArray(512)
+            repeat(32) { // 32 × 32 ms ≈ 1 s @ 16 kHz
+                if (session !== s) return@launch
+                runCatching { s.pipeline.pushAudio(silence) }
+                delay(32)
+            }
+        }
     }
 
     override fun onCancel(listener: Callback) {
