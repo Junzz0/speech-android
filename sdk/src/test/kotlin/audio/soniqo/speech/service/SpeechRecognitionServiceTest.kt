@@ -75,7 +75,7 @@ class SpeechRecognitionServiceTest {
 
     @Test
     fun startListening_setsUpPipelineAndSignalsReady() {
-        service.onStartListening(Intent(), listener)
+        service.startListening(Intent(), listener)
 
         verify(timeout = 1500) { listener.readyForSpeech(any()) }
     }
@@ -85,10 +85,10 @@ class SpeechRecognitionServiceTest {
         // Regression test for the race fix: the first call must claim the
         // `starting` flag synchronously so a second call hits the busy branch
         // before the suspending setup of the first one completes.
-        service.onStartListening(Intent(), listener)
+        service.startListening(Intent(), listener)
 
         val second = mockk<RecognitionService.Callback>(relaxed = true)
-        service.onStartListening(Intent(), second)
+        service.startListening(Intent(), second)
 
         verify { second.error(SpeechRecognizer.ERROR_RECOGNIZER_BUSY) }
     }
@@ -99,10 +99,10 @@ class SpeechRecognitionServiceTest {
         // from silence in the audio stream, and nativeStop does not flush. We
         // expect ~32 chunks × 32 ms ≈ 1 s of zero frames pushed after the mic
         // is cut so the pipeline emits its final TranscriptionCompleted.
-        service.onStartListening(Intent(), listener)
+        service.startListening(Intent(), listener)
         verify(timeout = 1500) { listener.readyForSpeech(any()) }
 
-        service.onStopListening(listener)
+        service.stopListening(listener)
 
         waitFor(2_000) { fakePipeline.silencePushCount >= 30 }
     }
@@ -112,14 +112,14 @@ class SpeechRecognitionServiceTest {
         val app = ApplicationProvider.getApplicationContext<Application>()
         shadowOf(app).denyPermissions(Manifest.permission.RECORD_AUDIO)
 
-        service.onStartListening(Intent(), listener)
+        service.startListening(Intent(), listener)
 
         verify { listener.error(SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) }
     }
 
     @Test
     fun transcriptionCompleted_emitsResultsAndTearsDownSession() {
-        service.onStartListening(Intent(), listener)
+        service.startListening(Intent(), listener)
         verify(timeout = 1500) { listener.readyForSpeech(any()) }
 
         kotlinx.coroutines.runBlocking {
@@ -140,7 +140,11 @@ class SpeechRecognitionServiceTest {
         assertTrue("predicate did not become true within ${timeoutMs}ms", predicate())
     }
 
-    /** Subclass that exposes the protected seams. */
+    /**
+     * Subclass that exposes the protected seams plus public helpers for the
+     * protected RecognitionService callbacks (onStartListening / onStopListening
+     * are protected on the SDK class, so tests can't call them directly).
+     */
     class TestableService : SpeechRecognitionService() {
         private lateinit var pipelineToInject: SpeechPipeline
         private lateinit var recordToInject: AudioRecord
@@ -149,6 +153,11 @@ class SpeechRecognitionServiceTest {
             pipelineToInject = pipeline
             recordToInject = record
         }
+
+        fun startListening(intent: Intent, listener: Callback) =
+            onStartListening(intent, listener)
+
+        fun stopListening(listener: Callback) = onStopListening(listener)
 
         override fun createPipeline(config: SpeechConfig): SpeechPipeline = pipelineToInject
 
