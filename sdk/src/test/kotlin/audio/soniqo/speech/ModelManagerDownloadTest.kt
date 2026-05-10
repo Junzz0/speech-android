@@ -99,7 +99,7 @@ class ModelManagerDownloadTest {
             }
         }
 
-        tmp.delete()
+        // Preserve tmp for resume on next attempt — mirrors production.
         throw IOException("Failed after $maxRetries attempts: ${lastException?.message}", lastException)
     }
 
@@ -155,17 +155,28 @@ class ModelManagerDownloadTest {
     }
 
     @Test
-    fun `cleans up tmp file after all retries fail`() {
-        server.enqueue(MockResponse().setResponseCode(500))
-        server.enqueue(MockResponse().setResponseCode(500))
+    fun `preserves tmp file after all retries fail so next attempt can resume`() {
+        // Simulate every retry attempt failing mid-stream: server promises 16
+        // bytes via Content-Length but disconnects during the body. OkHttp
+        // throws, triggering retry. After all retries exhaust, we expect the
+        // .tmp file to persist (with whatever partial bytes made it to disk)
+        // so the worker can resume via Range: bytes=N- on a future invocation.
+        repeat(2) {
+            server.enqueue(
+                MockResponse()
+                    .setBody("ABCDEFGHIJKLMNOP")
+                    .setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY)
+            )
+        }
 
         val dest = File(tmpDir.root, "model.onnx")
         try {
             downloadFile(server.url("/model.onnx").toString(), dest, maxRetries = 2)
         } catch (_: IOException) {}
 
-        assertFalse(dest.exists())
-        assertFalse(File(tmpDir.root, "model.onnx.tmp").exists())
+        assertFalse("final file should not exist on failure", dest.exists())
+        val tmp = File(tmpDir.root, "model.onnx.tmp")
+        assertTrue("partial .tmp should be preserved for resume", tmp.exists())
     }
 
     @Test

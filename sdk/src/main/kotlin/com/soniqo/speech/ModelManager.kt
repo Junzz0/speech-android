@@ -75,9 +75,10 @@ object ModelManager {
      * and passes [isValidModel] (right ONNX magic, above the per-file size
      * floor) and the cached version matches [MODEL_VERSION].
      *
-     * Cheap and side-effect free — does not start a download. Used by paths
-     * that must answer "are we ready?" without blocking, e.g.
-     * `SpeechRecognitionService.onCheckRecognitionSupport()`.
+     * Cheap and side-effect free — does not start a download. Use this from
+     * `SpeechRecognitionService.onCheckRecognitionSupport()` (or any path
+     * that must not block) to decide whether to invoke [ensureModels] /
+     * `ModelDownloadWorker` first.
      */
     fun areModelsReady(
         context: Context,
@@ -102,6 +103,10 @@ object ModelManager {
         }
     }
 
+    /** Path to the model directory for [precision], without downloading. */
+    fun modelDir(context: Context): String =
+        File(context.filesDir, "models").absolutePath
+
     /** Returns the model directory path, downloading models if needed. */
     suspend fun ensureModels(
         context: Context,
@@ -120,8 +125,10 @@ object ModelManager {
             dir.resolve("voices").listFiles()?.forEach { it.delete() }
         }
 
-        // Clean up leftover partial downloads from previous crashes
-        dir.walk().filter { it.extension == "tmp" }.forEach { it.delete() }
+        // Note: leftover .tmp files are intentionally preserved here. If a
+        // previous run was interrupted, downloadFile resumes via Range:
+        // bytes=N- on the next attempt. Stale .tmp from an old MODEL_VERSION
+        // is already wiped above.
 
         val fileList = models(precision)
         // FP32 encoder needs the external data file
@@ -235,8 +242,11 @@ object ModelManager {
             }
         }
 
-        // All retries exhausted — clean up partial file and throw
-        tmp.delete()
+        // All retries exhausted — preserve the partial .tmp so the next
+        // ensureModels() call can pick up where this one left off via the
+        // Range: header. Particularly important when called from
+        // ModelDownloadWorker, where Result.retry() spins up a fresh
+        // ensureModels() invocation after WorkManager's backoff window.
         throw IOException("Download failed after $MAX_RETRIES attempts: ${lastException?.message}", lastException)
     }
 
