@@ -79,11 +79,59 @@ cd speech-android
 
 - リアルタイム VAD 波形の可視化
 - エコーモード:音声を文字起こしして合成し直す(LLM なし)
+- ディクテーションモード:ストリーミング部分結果
+- `SpeechRecognizer` テスト画面 — システム全体の音声入力パスを実行
 - STT/TTS のレイテンシ表示付きチャットバブル UI
 
 ```bash
 ./gradlew :app:installDebug
 ```
+
+### システム音声入力(`RecognitionService`)
+
+SDK には、Android フレームワークの `SpeechRecognizer` API に組み込めるすぐに使える `audio.soniqo.speech.service.SpeechRecognitionService` が含まれています — コードを書く必要はありません。アプリがデフォルトの音声認識サービスに選択されると、`SpeechRecognizer.createSpeechRecognizer(context)`(`ComponentName` なし)を呼び出す任意のサードパーティアプリが、あなたのパイプラインを通じて完全なオンデバイス STT を利用できます。
+
+**1. `AndroidManifest.xml` で `RECORD_AUDIO` とサービスを宣言します:**
+
+```xml
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+<application>
+    <service
+        android:name="audio.soniqo.speech.service.SpeechRecognitionService"
+        android:exported="true"
+        android:permission="android.permission.RECORD_AUDIO">
+        <intent-filter>
+            <action android:name="android.speech.RecognitionService" />
+        </intent-filter>
+        <meta-data
+            android:name="android.speech"
+            android:resource="@xml/recognition_service" />
+    </service>
+</application>
+```
+
+**2. `app/src/main/res/xml/recognition_service.xml` を追加します:**
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<recognition-service xmlns:android="http://schemas.android.com/apk/res/android" />
+```
+
+(オプションで `android:settingsActivity="..."` を追加すると、システム音声入力ピッカーに歯車アイコンが表示されます。)
+
+**3. サービスをシステムデフォルトに設定します**(標準 Android では 設定 → システム → 言語と入力 → 音声入力ピッカー、または adb 経由):
+
+```bash
+adb shell settings put secure voice_recognition_service \
+  your.package/audio.soniqo.speech.service.SpeechRecognitionService
+```
+
+**4. 確認**:デモアプリの *Recognizer test* 画面を実行します。これは `SpeechRecognizer.createSpeechRecognizer(ctx)`(コンポーネントなし)を呼び出し、すべてのフレームワークコールバックをログに記録します — logcat なしで binder のラウンドトリップを確認するのに便利です。
+
+サービスは `onCheckRecognitionSupport`(API 33+)を実装し、Parakeet TDT v3 がカバーする 27 の BCP-47 言語を返します。モデルが存在する場合は `installedOnDeviceLanguage`、ダウンロード中は `pendingOnDeviceLanguage` でマークされます。セッション中は `AUDIOFOCUS_GAIN_TRANSIENT` でオーディオフォーカスを取得します。
+
+**注意:** Gboard、Samsung Keyboard、Google Assistant は独自の認識エンジンを同梱しており、システムデフォルトをスキップします。あなたのサービスを通過するのは、フレームワーク `SpeechRecognizer` API を明示的に呼び出すアプリ(またはその上に独自 UI を構築するアプリ)です。
 
 ## パフォーマンス
 

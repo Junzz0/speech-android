@@ -79,11 +79,59 @@ cd speech-android
 
 - 实时 VAD 波形可视化
 - 回声模式:转录语音并将其合成回放(无 LLM)
+- 听写模式:流式部分结果
+- `SpeechRecognizer` 测试界面 — 演练系统级语音输入路径
 - 带有 STT/TTS 延迟显示的聊天气泡 UI
 
 ```bash
 ./gradlew :app:installDebug
 ```
+
+### 系统语音输入(`RecognitionService`)
+
+SDK 自带可直接使用的 `audio.soniqo.speech.service.SpeechRecognitionService`,接入 Android 框架的 `SpeechRecognizer` API — 无需编写代码。一旦你的应用被设为默认语音识别器,任何调用 `SpeechRecognizer.createSpeechRecognizer(context)`(不指定 `ComponentName`)的第三方应用都能通过你的流水线获得完全本地的 STT。
+
+**1. 在 `AndroidManifest.xml` 中声明 `RECORD_AUDIO` 和服务:**
+
+```xml
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+<application>
+    <service
+        android:name="audio.soniqo.speech.service.SpeechRecognitionService"
+        android:exported="true"
+        android:permission="android.permission.RECORD_AUDIO">
+        <intent-filter>
+            <action android:name="android.speech.RecognitionService" />
+        </intent-filter>
+        <meta-data
+            android:name="android.speech"
+            android:resource="@xml/recognition_service" />
+    </service>
+</application>
+```
+
+**2. 添加 `app/src/main/res/xml/recognition_service.xml`:**
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<recognition-service xmlns:android="http://schemas.android.com/apk/res/android" />
+```
+
+(可选添加 `android:settingsActivity="..."` 以在系统语音输入选择器中显示设置图标。)
+
+**3. 将服务设为系统默认**(原生 Android 上 设置 → 系统 → 语言和输入 → 语音输入选择器,或通过 adb):
+
+```bash
+adb shell settings put secure voice_recognition_service \
+  your.package/audio.soniqo.speech.service.SpeechRecognitionService
+```
+
+**4. 验证**:运行演示应用的*识别器测试*界面,它调用 `SpeechRecognizer.createSpeechRecognizer(ctx)`(不带组件)并记录每个框架回调 — 无需 logcat 即可确认 binder 往返。
+
+服务实现了 `onCheckRecognitionSupport`(API 33+),返回 Parakeet TDT v3 涵盖的 27 个 BCP-47 语言,在模型存在时标记为 `installedOnDeviceLanguage`(下载中时为 `pendingOnDeviceLanguage`)。会话期间使用 `AUDIOFOCUS_GAIN_TRANSIENT` 获取音频焦点。
+
+**注意:** Gboard、三星键盘和 Google Assistant 都自带识别器,会跳过系统默认。显式调用框架 `SpeechRecognizer` API(或在其上构建自己 UI)的应用才会经过你的服务。
 
 ## 性能
 

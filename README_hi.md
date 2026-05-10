@@ -79,11 +79,59 @@ cd speech-android
 
 - रीयल-टाइम VAD वेवफ़ॉर्म विज़ुअलाइज़ेशन
 - इको मोड: स्पीच को ट्रांसक्राइब करता है और इसे वापस सिंथेसाइज़ करता है (कोई LLM नहीं)
+- डिक्टेशन मोड: स्ट्रीमिंग आंशिक परिणाम
+- `SpeechRecognizer` टेस्ट स्क्रीन — सिस्टम-वाइड वॉयस इनपुट पथ का परीक्षण करता है
 - STT/TTS विलंबता प्रदर्शन के साथ चैट बबल UI
 
 ```bash
 ./gradlew :app:installDebug
 ```
+
+### सिस्टम वॉयस इनपुट (`RecognitionService`)
+
+SDK एक उपयोग के लिए तैयार `audio.soniqo.speech.service.SpeechRecognitionService` शामिल करता है जो Android फ्रेमवर्क के `SpeechRecognizer` API से जुड़ता है — कोई कोड लिखने की आवश्यकता नहीं। एक बार आपका ऐप डिफ़ॉल्ट वॉयस रिकग्नाइज़र के रूप में चुना जाता है, कोई भी थर्ड-पार्टी ऐप जो `SpeechRecognizer.createSpeechRecognizer(context)` (बिना `ComponentName` के) कॉल करता है, आपकी पाइपलाइन के माध्यम से पूरी तरह से ऑन-डिवाइस STT प्राप्त करता है।
+
+**1. `AndroidManifest.xml` में `RECORD_AUDIO` और सेवा घोषित करें:**
+
+```xml
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+<application>
+    <service
+        android:name="audio.soniqo.speech.service.SpeechRecognitionService"
+        android:exported="true"
+        android:permission="android.permission.RECORD_AUDIO">
+        <intent-filter>
+            <action android:name="android.speech.RecognitionService" />
+        </intent-filter>
+        <meta-data
+            android:name="android.speech"
+            android:resource="@xml/recognition_service" />
+    </service>
+</application>
+```
+
+**2. `app/src/main/res/xml/recognition_service.xml` जोड़ें:**
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<recognition-service xmlns:android="http://schemas.android.com/apk/res/android" />
+```
+
+(वैकल्पिक रूप से `android:settingsActivity="..."` जोड़ें ताकि सिस्टम वॉयस-इनपुट पिकर में एक गियर आइकन दिखे।)
+
+**3. सेवा को सिस्टम डिफ़ॉल्ट के रूप में सेट करें** (स्टॉक Android पर सेटिंग्स → सिस्टम → भाषाएँ और इनपुट → वॉयस इनपुट पिकर, या adb के माध्यम से):
+
+```bash
+adb shell settings put secure voice_recognition_service \
+  your.package/audio.soniqo.speech.service.SpeechRecognitionService
+```
+
+**4. सत्यापित करें** डेमो ऐप का *Recognizer test* स्क्रीन चलाकर, जो `SpeechRecognizer.createSpeechRecognizer(ctx)` (बिना कंपोनेंट के) कॉल करता है और हर फ्रेमवर्क कॉलबैक को लॉग करता है — logcat के बिना binder राउंड-ट्रिप की पुष्टि के लिए उपयोगी।
+
+सेवा `onCheckRecognitionSupport` (API 33+) को लागू करती है जो Parakeet TDT v3 द्वारा कवर की गई 27 BCP-47 भाषाओं को लौटाती है, मॉडल मौजूद होने पर `installedOnDeviceLanguage` के रूप में चिह्नित (या डाउनलोड के दौरान `pendingOnDeviceLanguage`)। सत्र की अवधि के लिए `AUDIOFOCUS_GAIN_TRANSIENT` के साथ ऑडियो फोकस प्राप्त किया जाता है।
+
+**सीमा:** Gboard, Samsung Keyboard और Google Assistant अपने स्वयं के पहचानकर्ता बंडल करते हैं और सिस्टम डिफ़ॉल्ट को छोड़ देते हैं। फ्रेमवर्क `SpeechRecognizer` API को स्पष्ट रूप से कॉल करने वाले ऐप (या उसके ऊपर अपना UI बनाने वाले) ही आपकी सेवा से होकर गुजरते हैं।
 
 ## प्रदर्शन
 
