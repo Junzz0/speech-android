@@ -161,9 +161,13 @@ speech_pipeline_t speech_create(speech_config_t config,
             dir + "/parakeet-decoder-joint" + suffix + ".onnx",
             dir + "/vocab.json",
             hw_accel);
-        h->tts = new KokoroTts(
-            dir + "/kokoro" + suffix + ".onnx",
-            dir + "/voices", dir, hw_accel);
+        // Skip TTS when transcribe-only — saves model load time and lets
+        // the CLI run on a slimmer model directory (no kokoro-e2e bundle).
+        if (!config.transcribe_only) {
+            h->tts = new KokoroTts(
+                dir + "/kokoro-e2e.onnx",
+                dir + "/voices", dir, hw_accel);
+        }
 
         // VAD vtable
         sc_vad_vtable_t vad_vt = {};
@@ -179,12 +183,14 @@ speech_pipeline_t speech_create(speech_config_t config,
         stt_vt.transcribe = ::stt_transcribe;
         stt_vt.input_sample_rate = ::stt_sample_rate;
 
-        // TTS vtable
+        // TTS vtable — populated only when TTS was loaded.
         sc_tts_vtable_t tts_vt = {};
-        tts_vt.context = h->tts;
-        tts_vt.synthesize = ::tts_synthesize;
-        tts_vt.output_sample_rate = ::tts_sample_rate;
-        tts_vt.cancel = ::tts_cancel;
+        if (h->tts) {
+            tts_vt.context = h->tts;
+            tts_vt.synthesize = ::tts_synthesize;
+            tts_vt.output_sample_rate = ::tts_sample_rate;
+            tts_vt.cancel = ::tts_cancel;
+        }
 
         // Pipeline config
         sc_config_t sc_cfg = sc_config_default();
