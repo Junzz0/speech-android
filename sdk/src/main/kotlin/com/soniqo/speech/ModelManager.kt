@@ -70,6 +70,38 @@ object ModelManager {
         val completed: Int,
     )
 
+    /**
+     * True iff every required model file for [precision] is already on disk
+     * and passes [isValidModel] (right ONNX magic, above the per-file size
+     * floor) and the cached version matches [MODEL_VERSION].
+     *
+     * Cheap and side-effect free — does not start a download. Used by paths
+     * that must answer "are we ready?" without blocking, e.g.
+     * `SpeechRecognitionService.onCheckRecognitionSupport()`.
+     */
+    fun areModelsReady(
+        context: Context,
+        precision: ModelPrecision = ModelPrecision.INT8,
+    ): Boolean {
+        val dir = File(context.filesDir, "models")
+        if (!dir.exists()) return false
+
+        val versionFile = File(dir, "version.txt")
+        val cached = versionFile.takeIf { it.exists() }?.readText()?.trim()?.toIntOrNull() ?: 0
+        if (cached < MODEL_VERSION) return false
+
+        val fileList = models(precision)
+        val allFiles = if (precision == ModelPrecision.FP32) {
+            fileList + ModelFile("Parakeet-TDT-0.6B-ONNX", "parakeet-encoder.onnx.data")
+        } else {
+            fileList
+        }
+        return allFiles.all { model ->
+            val dest = File(dir, model.filename)
+            dest.exists() && isValidModel(dest, model.filename)
+        }
+    }
+
     /** Returns the model directory path, downloading models if needed. */
     suspend fun ensureModels(
         context: Context,
