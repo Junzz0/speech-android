@@ -120,8 +120,10 @@ object ModelManager {
             dir.resolve("voices").listFiles()?.forEach { it.delete() }
         }
 
-        // Clean up leftover partial downloads from previous crashes
-        dir.walk().filter { it.extension == "tmp" }.forEach { it.delete() }
+        // Note: leftover .tmp files are intentionally preserved here. If a
+        // previous run was interrupted, downloadFile resumes via Range:
+        // bytes=N- on the next attempt. Stale .tmp from an old MODEL_VERSION
+        // is already wiped above.
 
         val fileList = models(precision)
         // FP32 encoder needs the external data file
@@ -235,8 +237,11 @@ object ModelManager {
             }
         }
 
-        // All retries exhausted — clean up partial file and throw
-        tmp.delete()
+        // All retries exhausted — preserve the partial .tmp so the next
+        // ensureModels() call can pick up where this one left off via the
+        // Range: header. Particularly important when called from
+        // ModelDownloadWorker, where Result.retry() spins up a fresh
+        // ensureModels() invocation after WorkManager's backoff window.
         throw IOException("Download failed after $MAX_RETRIES attempts: ${lastException?.message}", lastException)
     }
 
