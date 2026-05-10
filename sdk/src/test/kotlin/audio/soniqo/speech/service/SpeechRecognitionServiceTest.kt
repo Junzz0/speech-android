@@ -3,8 +3,11 @@ package audio.soniqo.speech.service
 import android.Manifest
 import android.app.Application
 import android.content.Intent
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.speech.RecognitionService
+import android.speech.RecognitionSupport
 import android.speech.SpeechRecognizer
 import androidx.test.core.app.ApplicationProvider
 import audio.soniqo.speech.PipelineState
@@ -13,6 +16,7 @@ import audio.soniqo.speech.SpeechEvent
 import audio.soniqo.speech.SpeechPipeline
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.unmockkAll
 import io.mockk.verify
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -131,6 +135,61 @@ class SpeechRecognitionServiceTest {
         waitFor(1_000) { fakePipeline.closeCalls > 0 }
     }
 
+    @Test
+    fun startListening_requestsAudioFocus() {
+        service.startListening(Intent(), listener)
+        verify(timeout = 1500) { listener.readyForSpeech(any()) }
+
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val am = app.getSystemService(AudioManager::class.java)
+        val granted = shadowOf(am).lastAudioFocusRequest
+        assertTrue(
+            "expected an AudioFocusRequest after startListening, got $granted",
+            granted != null,
+        )
+    }
+
+    @Test
+    fun audioFocusLoss_tearsDownSession() {
+        service.startListening(Intent(), listener)
+        verify(timeout = 1500) { listener.readyForSpeech(any()) }
+
+        // Simulate the system handing audio focus to a phone call: invoke
+        // the listener that was registered at startListening time.
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val am = app.getSystemService(AudioManager::class.java)
+        val recordedReq = shadowOf(am).lastAudioFocusRequest!!
+        recordedReq.listener.onAudioFocusChange(AudioManager.AUDIOFOCUS_LOSS)
+
+        // tearDownSession() runs synchronously on the main thread; the
+        // pipeline's close() is part of it, so we can assert on closeCalls
+        // without polling for long.
+        waitFor(1_000) { fakePipeline.closeCalls > 0 }
+    }
+
+    @Test
+    fun onCheckRecognitionSupport_modelsNotReady_marksLanguagesPending() {
+        val callback = mockk<RecognitionService.SupportCallback>(relaxed = true)
+        service.checkRecognitionSupport(Intent(), callback)
+
+        val supportSlot = slot<RecognitionSupport>()
+        verify(timeout = 1500) { callback.onSupportResult(capture(supportSlot)) }
+        val support = supportSlot.captured
+
+        // Models aren't on disk in the test, so all advertised languages
+        // should be pending — never installed.
+        assertTrue("installed should be empty", support.installedOnDeviceLanguages.isEmpty())
+        assertTrue(
+            "pending should include 'en'",
+            support.pendingOnDeviceLanguages.contains("en"),
+        )
+        assertTrue(
+            "pending should match SUPPORTED_LANGUAGES",
+            support.pendingOnDeviceLanguages
+                .containsAll(SpeechRecognitionService.SUPPORTED_LANGUAGES),
+        )
+    }
+
     private fun waitFor(timeoutMs: Long, predicate: () -> Boolean) {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
@@ -158,6 +217,9 @@ class SpeechRecognitionServiceTest {
             onStartListening(intent, listener)
 
         fun stopListening(listener: Callback) = onStopListening(listener)
+
+        fun checkRecognitionSupport(intent: Intent, callback: SupportCallback) =
+            onCheckRecognitionSupport(intent, callback)
 
         override fun createPipeline(config: SpeechConfig): SpeechPipeline = pipelineToInject
 

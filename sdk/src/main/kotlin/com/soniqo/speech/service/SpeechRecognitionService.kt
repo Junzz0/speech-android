@@ -3,14 +3,20 @@ package audio.soniqo.speech.service
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.os.Build
 import android.os.Bundle
 import android.speech.RecognitionService
+import android.speech.RecognitionSupport
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
+import androidx.annotation.RequiresApi
 import audio.soniqo.speech.ModelManager
 import audio.soniqo.speech.ModelPrecision
 import audio.soniqo.speech.SpeechConfig
@@ -56,6 +62,9 @@ open class SpeechRecognitionService : RecognitionService() {
     // begins, so a second start request rejects with BUSY instead of racing to
     // create a parallel session that leaks AudioRecord and the pipeline.
     private val starting = AtomicBoolean(false)
+
+    @Volatile
+    private var audioFocusRequest: AudioFocusRequest? = null
 
     private class Session(
         val pipeline: SpeechPipeline,
@@ -124,6 +133,7 @@ open class SpeechRecognitionService : RecognitionService() {
 
         pipeline.start()
         record.startRecording()
+        requestAudioFocus()
         listener.readyForSpeech(Bundle.EMPTY)
 
         val eventJob = scope.launch {
@@ -219,6 +229,7 @@ open class SpeechRecognitionService : RecognitionService() {
         runCatching { s.audioRecord.release() }
         runCatching { s.pipeline.stop() }
         runCatching { s.pipeline.close() }
+        abandonAudioFocus()
     }
 
     override fun onDestroy() {
@@ -269,7 +280,88 @@ open class SpeechRecognitionService : RecognitionService() {
         )
     }
 
+    // -- audio focus ---------------------------------------------------------
+
+    /**
+     * Acquire transient audio focus while we're listening so music ducks /
+     * pauses, and we get notified when something more important needs the
+     * mic (incoming call, navigation prompt). Best-effort; logs and proceeds
+     * if the system denies the request.
+     */
+    private fun requestAudioFocus() {
+        val am = getSystemService(AudioManager::class.java) ?: return
+        val attrs = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+            .build()
+        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+            .setAudioAttributes(attrs)
+            .setOnAudioFocusChangeListener { change ->
+                when (change) {
+                    AudioManager.AUDIOFOCUS_LOSS,
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                        Log.i(TAG, "audio focus lost ($change), tearing down session")
+                        tearDownSession()
+                    }
+                    else -> Unit
+                }
+            }
+            .build()
+        audioFocusRequest = request
+        val result = am.requestAudioFocus(request)
+        if (result != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+            Log.w(TAG, "audio focus request denied (result=$result) — proceeding anyway")
+        }
+    }
+
+    private fun abandonAudioFocus() {
+        val am = getSystemService(AudioManager::class.java) ?: return
+        val req = audioFocusRequest ?: return
+        audioFocusRequest = null
+        runCatching { am.abandonAudioFocusRequest(req) }
+    }
+
+    // -- onCheckRecognitionSupport (API 33+) --------------------------------
+
+    /**
+     * Tell the framework which BCP-47 languages we can recognize on-device.
+     * If the models are already present we report them as installed; if
+     * they're still pending download we mark them pending so the caller can
+     * surface a "downloading" UX instead of falling back to an online
+     * recognizer.
+     *
+     * The list is a representative subset of Parakeet TDT v3's claimed
+     * 114-language support — extend [SUPPORTED_LANGUAGES] to advertise more.
+     */
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    override fun onCheckRecognitionSupport(
+        recognizerIntent: Intent,
+        listener: SupportCallback,
+    ) {
+        val builder = RecognitionSupport.Builder()
+        val ready = ModelManager.areModelsReady(this, ModelPrecision.INT8)
+        SUPPORTED_LANGUAGES.forEach { tag ->
+            if (ready) builder.addInstalledOnDeviceLanguage(tag)
+            else builder.addPendingOnDeviceLanguage(tag)
+        }
+        listener.onSupportResult(builder.build())
+    }
+
     companion object {
         private const val TAG = "SoniqoRecognition"
+
+        /**
+         * BCP-47 tags advertised via [onCheckRecognitionSupport]. Parakeet
+         * TDT v3 is multilingual; this is a curated subset of the most-
+         * requested languages — extend as needed.
+         */
+        @JvmField
+        val SUPPORTED_LANGUAGES: List<String> = listOf(
+            "ar", "cs", "da", "de", "el", "en", "es", "fi",
+            "fr", "he", "hi", "hu", "id", "it", "ja", "ko",
+            "nb", "nl", "pl", "pt", "ru", "sv", "th", "tr",
+            "uk", "vi", "zh",
+        )
     }
 }
