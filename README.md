@@ -79,11 +79,75 @@ The [`app/`](app/) module is a minimal voice assistant demo with:
 
 - Real-time VAD waveform visualization
 - Echo mode: transcribes speech and synthesizes it back (no LLM)
+- Dictation mode: streaming partial results
+- `SpeechRecognizer` test screen — exercises the system-wide voice input path
 - Chat bubble UI with STT/TTS latency display
 
 ```bash
 ./gradlew :app:installDebug
 ```
+
+### System voice input (`RecognitionService`)
+
+The SDK ships a ready-made `audio.soniqo.speech.service.SpeechRecognitionService`
+that plugs into Android's framework `SpeechRecognizer` API — no code to write.
+Once your app is selected as the default voice recognizer, any third-party app
+calling `SpeechRecognizer.createSpeechRecognizer(context)` (with no
+`ComponentName`) gets fully on-device STT through your pipeline.
+
+**1. Declare `RECORD_AUDIO` and the service in `AndroidManifest.xml`:**
+
+```xml
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+<application>
+    <service
+        android:name="audio.soniqo.speech.service.SpeechRecognitionService"
+        android:exported="true"
+        android:permission="android.permission.RECORD_AUDIO">
+        <intent-filter>
+            <action android:name="android.speech.RecognitionService" />
+        </intent-filter>
+        <meta-data
+            android:name="android.speech"
+            android:resource="@xml/recognition_service" />
+    </service>
+</application>
+```
+
+**2. Add `app/src/main/res/xml/recognition_service.xml`:**
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<recognition-service xmlns:android="http://schemas.android.com/apk/res/android" />
+```
+
+(Optionally add `android:settingsActivity="..."` to expose a gear icon in the
+system Voice-input picker.)
+
+**3. Set the service as the system default** (Settings → System → Languages
+& input → Voice input picker on stock Android, or via adb):
+
+```bash
+adb shell settings put secure voice_recognition_service \
+  your.package/audio.soniqo.speech.service.SpeechRecognitionService
+```
+
+**4. Verify** by running the demo app's *Recognizer test* screen, which calls
+`SpeechRecognizer.createSpeechRecognizer(ctx)` (no component) and logs every
+framework callback — useful for confirming the binder round-trip without
+needing logcat.
+
+The service implements `onCheckRecognitionSupport` (API 33+) returning the
+27 BCP-47 languages Parakeet TDT v3 covers, marked
+`installedOnDeviceLanguage` once models are present (or
+`pendingOnDeviceLanguage` while they're downloading). Audio focus is
+acquired with `AUDIOFOCUS_GAIN_TRANSIENT` for the duration of a session.
+
+**Caveat:** Gboard, Samsung Keyboard, and Google Assistant bundle their own
+recognizers and skip the system default. Apps that explicitly call the
+framework `SpeechRecognizer` API (or build their own UI on top of it) are
+the ones that flow through your service.
 
 ## Performance
 

@@ -79,11 +79,59 @@ O módulo [`app/`](app/) é uma demo mínima de assistente de voz com:
 
 - Visualização de forma de onda VAD em tempo real
 - Modo eco: transcreve a fala e a sintetiza de volta (sem LLM)
+- Modo ditado: resultados parciais em streaming
+- Tela de teste `SpeechRecognizer` — exercita o caminho de entrada de voz em todo o sistema
 - UI de bolhas de chat com exibição de latência STT/TTS
 
 ```bash
 ./gradlew :app:installDebug
 ```
+
+### Entrada de voz do sistema (`RecognitionService`)
+
+O SDK fornece um `audio.soniqo.speech.service.SpeechRecognitionService` pronto para uso que se conecta à API `SpeechRecognizer` do framework do Android — sem código a escrever. Uma vez que seu app é selecionado como o reconhecedor de voz padrão, qualquer app de terceiros chamando `SpeechRecognizer.createSpeechRecognizer(context)` (sem `ComponentName`) obtém STT totalmente no dispositivo através do seu pipeline.
+
+**1. Declare `RECORD_AUDIO` e o serviço em `AndroidManifest.xml`:**
+
+```xml
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+<application>
+    <service
+        android:name="audio.soniqo.speech.service.SpeechRecognitionService"
+        android:exported="true"
+        android:permission="android.permission.RECORD_AUDIO">
+        <intent-filter>
+            <action android:name="android.speech.RecognitionService" />
+        </intent-filter>
+        <meta-data
+            android:name="android.speech"
+            android:resource="@xml/recognition_service" />
+    </service>
+</application>
+```
+
+**2. Adicione `app/src/main/res/xml/recognition_service.xml`:**
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<recognition-service xmlns:android="http://schemas.android.com/apk/res/android" />
+```
+
+(Opcionalmente adicione `android:settingsActivity="..."` para expor um ícone de engrenagem no seletor de entrada de voz do sistema.)
+
+**3. Defina o serviço como padrão do sistema** (Configurações → Sistema → Idiomas e entrada → Seletor de entrada de voz no Android puro, ou via adb):
+
+```bash
+adb shell settings put secure voice_recognition_service \
+  your.package/audio.soniqo.speech.service.SpeechRecognitionService
+```
+
+**4. Verifique** executando a tela *Recognizer test* do app demo, que chama `SpeechRecognizer.createSpeechRecognizer(ctx)` (sem componente) e registra cada callback do framework — útil para confirmar o round-trip do binder sem precisar do logcat.
+
+O serviço implementa `onCheckRecognitionSupport` (API 33+) retornando os 27 idiomas BCP-47 cobertos pelo Parakeet TDT v3, marcados como `installedOnDeviceLanguage` quando os modelos estão presentes (ou `pendingOnDeviceLanguage` enquanto eles são baixados). O foco de áudio é adquirido com `AUDIOFOCUS_GAIN_TRANSIENT` pela duração de uma sessão.
+
+**Limitação:** Gboard, Samsung Keyboard e Google Assistant agrupam seus próprios reconhecedores e ignoram o padrão do sistema. Apps que chamam explicitamente a API `SpeechRecognizer` do framework (ou constroem sua própria UI em cima dela) são os que passam pelo seu serviço.
 
 ## Desempenho
 

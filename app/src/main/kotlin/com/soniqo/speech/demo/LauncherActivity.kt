@@ -44,6 +44,11 @@ class LauncherActivity : ComponentActivity() {
             finish()
         })
 
+        root.addView(modeButton("Recognizer test", "Exercises android.speech.SpeechRecognizer") {
+            startActivity(Intent(this, SpeechRecognizerTestActivity::class.java))
+            finish()
+        })
+
         setContentView(root)
     }
 

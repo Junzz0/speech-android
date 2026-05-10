@@ -79,11 +79,59 @@ cd speech-android
 
 - 실시간 VAD 파형 시각화
 - 에코 모드: 음성을 전사하고 다시 합성(LLM 없음)
+- 받아쓰기 모드: 스트리밍 부분 결과
+- `SpeechRecognizer` 테스트 화면 — 시스템 전체 음성 입력 경로 실행
 - STT/TTS 지연 시간 표시가 있는 채팅 버블 UI
 
 ```bash
 ./gradlew :app:installDebug
 ```
+
+### 시스템 음성 입력(`RecognitionService`)
+
+SDK는 Android 프레임워크 `SpeechRecognizer` API에 연결되는 바로 사용 가능한 `audio.soniqo.speech.service.SpeechRecognitionService`를 제공합니다 — 작성할 코드가 없습니다. 앱이 기본 음성 인식기로 선택되면, `SpeechRecognizer.createSpeechRecognizer(context)`(`ComponentName` 없이)를 호출하는 모든 타사 앱이 파이프라인을 통해 완전히 온디바이스 STT를 받을 수 있습니다.
+
+**1. `AndroidManifest.xml`에서 `RECORD_AUDIO`와 서비스를 선언합니다:**
+
+```xml
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+<application>
+    <service
+        android:name="audio.soniqo.speech.service.SpeechRecognitionService"
+        android:exported="true"
+        android:permission="android.permission.RECORD_AUDIO">
+        <intent-filter>
+            <action android:name="android.speech.RecognitionService" />
+        </intent-filter>
+        <meta-data
+            android:name="android.speech"
+            android:resource="@xml/recognition_service" />
+    </service>
+</application>
+```
+
+**2. `app/src/main/res/xml/recognition_service.xml`을 추가합니다:**
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<recognition-service xmlns:android="http://schemas.android.com/apk/res/android" />
+```
+
+(선택적으로 `android:settingsActivity="..."`를 추가하면 시스템 음성 입력 선택기에 톱니바퀴 아이콘이 노출됩니다.)
+
+**3. 서비스를 시스템 기본값으로 설정합니다**(스톡 Android에서는 설정 → 시스템 → 언어 및 입력 → 음성 입력 선택기 또는 adb를 통해):
+
+```bash
+adb shell settings put secure voice_recognition_service \
+  your.package/audio.soniqo.speech.service.SpeechRecognitionService
+```
+
+**4. 검증**: 데모 앱의 *Recognizer test* 화면을 실행하면 `SpeechRecognizer.createSpeechRecognizer(ctx)`(컴포넌트 없이)를 호출하고 모든 프레임워크 콜백을 기록합니다 — logcat 없이 binder 왕복을 확인하는 데 유용합니다.
+
+서비스는 `onCheckRecognitionSupport`(API 33+)를 구현하여 Parakeet TDT v3가 지원하는 27개 BCP-47 언어를 반환합니다. 모델이 존재하면 `installedOnDeviceLanguage`, 다운로드 중이면 `pendingOnDeviceLanguage`로 표시됩니다. 세션 동안 `AUDIOFOCUS_GAIN_TRANSIENT`로 오디오 포커스를 획득합니다.
+
+**주의:** Gboard, 삼성 키보드, Google Assistant는 자체 인식 엔진을 번들로 제공하며 시스템 기본값을 건너뜁니다. 프레임워크 `SpeechRecognizer` API를 명시적으로 호출하거나 그 위에 자체 UI를 구축하는 앱만이 서비스를 통과합니다.
 
 ## 성능
 
