@@ -542,16 +542,24 @@ class MainActivity : ComponentActivity() {
         android.util.Log.i("Speech", "playTtsAudio: ${ttsBuffer.size} chunks")
         if (ttsBuffer.isEmpty()) return
 
-        // Merge all chunks into one buffer
-        val totalSize = ttsBuffer.sumOf { it.size }
-        android.util.Log.i("Speech", "playTtsAudio: $totalSize bytes = ${totalSize/2/TTS_SAMPLE_RATE.toFloat()}s")
-        val merged = ByteArray(totalSize)
+        // Merge all chunks, then prepend silence + apply fade-in/out so the
+        // audio HAL has time to spin up before the first phoneme and the
+        // playback ends on a zero sample (no abrupt-cut click).
+        val rawSize = ttsBuffer.sumOf { it.size }
+        android.util.Log.i("Speech", "playTtsAudio: $rawSize bytes = ${rawSize/2/TTS_SAMPLE_RATE.toFloat()}s")
+        val raw = ByteArray(rawSize)
         var offset = 0
         for (chunk in ttsBuffer) {
-            chunk.copyInto(merged, offset)
+            chunk.copyInto(raw, offset)
             offset += chunk.size
         }
         ttsBuffer.clear()
+
+        val leadSilenceSamples = TTS_SAMPLE_RATE * 80 / 1000   // 80ms HAL warmup
+        val fadeInSamples      = TTS_SAMPLE_RATE * 5  / 1000   // 5ms fade-in
+        val fadeOutSamples     = TTS_SAMPLE_RATE * 10 / 1000   // 10ms fade-out
+        val processed = applyFades(raw, leadSilenceSamples, fadeInSamples, fadeOutSamples)
+        val totalSize = processed.size
 
         // Write WAV file and play via MediaPlayer (louder on emulator)
         val wavFile = java.io.File(filesDir, "tts_playback.wav")
@@ -574,7 +582,7 @@ class MainActivity : ComponentActivity() {
             header.put("data".toByteArray())
             header.putInt(dataSize)
             fos.write(header.array())
-            fos.write(merged)
+            fos.write(processed)
         }
 
         val mp = android.media.MediaPlayer()
@@ -603,6 +611,31 @@ class MainActivity : ComponentActivity() {
             try { mp.stop() } catch (_: Exception) {}
             mp.release()
         }
+    }
+
+    private fun applyFades(
+        raw: ByteArray,
+        leadSilenceSamples: Int,
+        fadeInSamples: Int,
+        fadeOutSamples: Int,
+    ): ByteArray {
+        val rawSamples = raw.size / 2
+        val outSamples = leadSilenceSamples + rawSamples
+        val out = ByteArray(outSamples * 2)
+        val bb = java.nio.ByteBuffer.wrap(out).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        bb.position(leadSilenceSamples * 2)
+        val src = java.nio.ByteBuffer.wrap(raw).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        val fadeOutStart = (rawSamples - fadeOutSamples).coerceAtLeast(0)
+        for (i in 0 until rawSamples) {
+            val sample = src.short.toInt()
+            val gain = when {
+                i < fadeInSamples -> i.toFloat() / fadeInSamples
+                i >= fadeOutStart -> (rawSamples - i).toFloat() / fadeOutSamples
+                else -> 1f
+            }
+            bb.putShort((sample * gain).toInt().toShort())
+        }
+        return out
     }
 
     // ---------------------------------------------------------------------------

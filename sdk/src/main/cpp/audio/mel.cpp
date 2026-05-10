@@ -16,7 +16,7 @@ static float htk_mel_to_hz(float mel) {
 //   Log above 1000 Hz:     mel = 15 + 27 * log(f/1000) / log(6.4)
 static constexpr float kSlaneyBreakHz = 1000.0f;
 static constexpr float kSlaneyBreakMel = 15.0f;      // 3 * 1000 / 200
-static constexpr float kSlaneyLogStep = 27.0f / std::log(6.4f);  // ≈ 14.536
+static const float kSlaneyLogStep = 27.0f / std::log(6.4f);  // ≈ 14.536
 
 static float slaney_hz_to_mel(float hz) {
     if (hz < kSlaneyBreakHz)
