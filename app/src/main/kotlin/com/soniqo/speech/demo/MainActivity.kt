@@ -423,7 +423,7 @@ class MainActivity : ComponentActivity() {
     private fun buildDiagnosticLog(e: Throwable): String {
         val rt = Runtime.getRuntime()
         return buildString {
-            appendLine("=== Speech SDK Crash Log ===")
+            appendLine("=== Speech SDK Error Log ===")
             appendLine("Time: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", java.util.Locale.US).format(java.util.Date())}")
             appendLine()
             appendLine("Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
@@ -485,7 +485,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openGitHubIssue(log: String) {
-        val title = android.net.Uri.encode("Bug: crash on ${android.os.Build.MODEL}")
+        val title = android.net.Uri.encode("Issue on ${android.os.Build.MODEL}")
         val body = android.net.Uri.encode(
             "**Device:** ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n" +
             "**Android:** ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})\n" +
@@ -517,7 +517,7 @@ class MainActivity : ComponentActivity() {
 
     private fun copyToClipboard(text: String) {
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        cm.setPrimaryClip(android.content.ClipData.newPlainText("Speech crash log", text))
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("Speech error log", text))
         android.widget.Toast.makeText(this, "Log copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
     }
 
