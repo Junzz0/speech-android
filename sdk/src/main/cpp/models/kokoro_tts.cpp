@@ -173,28 +173,74 @@ void KokoroTts::synthesize(
         ort_check(api_, api_->GetTensorMutableData(outputs[1], (void**)&len_ptr));
         size_t valid_samples = static_cast<size_t>(len_ptr[0]);
 
-        // Fade in/out (5ms) to prevent pop/click
-        const size_t fade = std::min(static_cast<size_t>(120), valid_samples);
-        for (size_t i = 0; i < fade; i++) {
-            audio[i] *= static_cast<float>(i) / static_cast<float>(fade);
-            audio[valid_samples - fade + i] *= static_cast<float>(fade - i) / static_cast<float>(fade);
-        }
-
-        // Normalize to 0.9 peak (handles both quiet and clipping outputs)
+        // Inspect peak before any processing — short prompts (≤5 tokens) can
+        // make the E2E ONNX export numerically explode (peak in the hundreds).
+        // Treat that as a synthesis failure rather than amplifying garbage.
         float peak = 0.0f;
         for (size_t i = 0; i < valid_samples; i++) {
             float a = std::abs(audio[i]);
             if (a > peak) peak = a;
         }
-        if (peak > 0.01f) {
-            float gain = 0.9f / peak;
-            for (size_t i = 0; i < valid_samples; i++)
-                audio[i] *= gain;
+        if (peak > 2.0f) {
+            LOGI("TTS: dropping output, peak=%.2f indicates numerical instability "
+                 "(short prompt? text='%.40s')", peak, text);
+            // Cleanup outputs and return without emitting audio
+            for (int i = 2; i >= 0; i--) api_->ReleaseValue(outputs[i]);
+            api_->ReleaseValue(t_phases);
+            api_->ReleaseValue(t_speed);
+            api_->ReleaseValue(t_style);
+            api_->ReleaseValue(t_mask);
+            api_->ReleaseValue(t_ids);
+            return;
         }
 
-        LOGI("TTS: valid=%zu peak=%.4f", valid_samples, peak);
+        // Trim trailing artifacts — Kokoro's E2E model often emits 100-300 ms
+        // of low-energy noise + occasional loud spike past the real speech.
+        // Walk backwards through 50 ms windows; the last window above the
+        // silence floor is where speech ended. Sustained-energy threshold
+        // (50 ms window) avoids mistaking isolated artifact spikes for
+        // speech. Mirrors KokoroTTSModel.synthesize() in speech-swift.
+        constexpr int sample_rate = 24000;
+        constexpr float silence_rms = 0.030f;
+        const size_t win = std::max<size_t>(1, sample_rate / 20);  // 50 ms
+        size_t speech_end = valid_samples;
+        if (valid_samples > win) {
+            for (size_t i = valid_samples - win; i > 0; i -= win / 2) {
+                float sum_sq = 0.0f;
+                for (size_t j = 0; j < win; j++) {
+                    float v = audio[i + j];
+                    sum_sq += v * v;
+                }
+                float rms = std::sqrt(sum_sq / static_cast<float>(win));
+                if (rms > silence_rms) {
+                    speech_end = i + win;
+                    break;
+                }
+                if (i < win / 2) break;
+            }
+        }
+        if (speech_end < valid_samples) {
+            for (size_t k = speech_end; k < valid_samples; k++) audio[k] = 0.0f;
+        }
+        // ~10 ms linear fade-out at the new tail boundary so the seam is smooth.
+        const size_t fade_out = std::min<size_t>(speech_end, sample_rate / 100);
+        if (fade_out >= 2) {
+            const size_t start = speech_end - fade_out;
+            const float denom = static_cast<float>(fade_out - 1);
+            for (size_t k = 0; k < fade_out; k++) {
+                float gain = static_cast<float>(fade_out - 1 - k) / denom;
+                audio[start + k] *= gain;
+            }
+        }
+        // 5 ms fade-in to prevent click at start.
+        const size_t fade_in = std::min<size_t>(120, speech_end);
+        for (size_t i = 0; i < fade_in; i++) {
+            audio[i] *= static_cast<float>(i) / static_cast<float>(fade_in);
+        }
 
-        on_chunk(audio, valid_samples, true, ctx);
+        LOGI("TTS: valid=%zu speech_end=%zu peak=%.4f", valid_samples, speech_end, peak);
+
+        on_chunk(audio, speech_end, true, ctx);
     }
 
     // --- cleanup ---

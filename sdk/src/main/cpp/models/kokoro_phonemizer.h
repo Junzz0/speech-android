@@ -17,9 +17,16 @@
 /// No eSpeak-NG dependency.
 class KokoroPhonemizer {
 public:
+    // Kokoro's vocab uses '$' (token id 0) as the BOS / EOS / padding symbol —
+    // see vocab_index.json: '$' -> 0, ';' -> 1, ':' -> 2. Earlier code used 1
+    // and 2, which prepended a literal semicolon and appended a colon to every
+    // utterance, throwing off the model's prosody and dropping the first word.
+    // Verified by round-tripping prompts through speech_synthesize +
+    // speech_transcribe: with the wrong wrap "Hello world" came back as
+    // "I wrote"; with id 0 it round-trips to "Hello world".
     static constexpr int PAD_ID = 0;
-    static constexpr int BOS_ID = 1;
-    static constexpr int EOS_ID = 2;
+    static constexpr int BOS_ID = 0;
+    static constexpr int EOS_ID = 0;
 
     KokoroPhonemizer() = default;
 

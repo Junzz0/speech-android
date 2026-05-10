@@ -7,6 +7,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(SPEECH_BUILD_DEMO "Build ALSA demo CLI" ON)
 option(SPEECH_BUILD_TESTS "Build tests" ON)
+option(SPEECH_BUILD_TOOLS "Build CLI tools (transcribe)" ON)
 
 # --- Paths ---
 set(SDK_CPP "${CMAKE_CURRENT_SOURCE_DIR}/../sdk/src/main/cpp")
@@ -77,4 +78,25 @@ if(SPEECH_BUILD_TESTS)
     target_link_libraries(speech_test PRIVATE speech)
     target_include_directories(speech_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
     add_test(NAME pipeline_test COMMAND speech_test)
+endif()
+
+# --- CLI tools ---
+if(SPEECH_BUILD_TOOLS)
+    add_executable(speech_transcribe tools/transcribe.cpp)
+    target_link_libraries(speech_transcribe PRIVATE speech)
+    target_include_directories(speech_transcribe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+    # speech_synthesize calls KokoroTts directly — needs the SDK private headers.
+    add_executable(speech_synthesize tools/synthesize.cpp)
+    target_link_libraries(speech_synthesize PRIVATE speech onnxruntime)
+    target_include_directories(speech_synthesize PRIVATE
+        ${SDK_CPP}
+        ${SDK_CPP}/models
+        ${ORT_DIR}/include)
+
+    add_executable(speech_phonemize tools/phonemize.cpp)
+    target_link_libraries(speech_phonemize PRIVATE speech)
+    target_include_directories(speech_phonemize PRIVATE
+        ${SDK_CPP}
+        ${SDK_CPP}/models)
 endif()
