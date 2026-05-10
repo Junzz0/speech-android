@@ -36,7 +36,7 @@ Android और एम्बेडेड Linux के लिए ऑन-डिव�
 
 ```kotlin
 dependencies {
-    implementation("audio.soniqo:speech:0.0.8")
+    implementation("audio.soniqo:speech:0.0.9")
 }
 ```
 
