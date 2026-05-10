@@ -25,7 +25,9 @@ import androidx.core.app.ActivityCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
-import audio.soniqo.speech.ModelManager
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import audio.soniqo.speech.ModelDownloadWorker
 import audio.soniqo.speech.ModelPrecision
 import audio.soniqo.speech.SpeechConfig
 import audio.soniqo.speech.SpeechEvent
@@ -218,24 +220,52 @@ class MainActivity : ComponentActivity() {
     private fun loadPipeline() {
         setStatus("initializing...")
 
+        // Models download in a foreground worker so the transfer survives
+        // backgrounding the app. Activity just observes progress.
+        val workId = ModelDownloadWorker.enqueue(applicationContext, ModelPrecision.INT8)
+        WorkManager.getInstance(applicationContext)
+            .getWorkInfoByIdLiveData(workId)
+            .observe(this) { info ->
+                if (info == null) return@observe
+                when (info.state) {
+                    WorkInfo.State.ENQUEUED,
+                    WorkInfo.State.BLOCKED,
+                    WorkInfo.State.RUNNING -> {
+                        val total = info.progress.getInt(ModelDownloadWorker.KEY_TOTAL, 0)
+                        if (total > 0) {
+                            val file = info.progress.getString(ModelDownloadWorker.KEY_FILE) ?: ""
+                            val done = info.progress.getInt(ModelDownloadWorker.KEY_COMPLETED, 0)
+                            val pct = info.progress.getInt(ModelDownloadWorker.KEY_PERCENT, 0)
+                            setStatus("$file $done/$total")
+                            downloadProgress.progress = pct
+                        }
+                    }
+                    WorkInfo.State.SUCCEEDED -> {
+                        val modelDir = info.outputData.getString(ModelDownloadWorker.KEY_MODEL_DIR)
+                        if (modelDir == null) {
+                            addSystemLine("worker succeeded but no model dir")
+                            setStatus("error")
+                            return@observe
+                        }
+                        downloadProgress.progress = 100
+                        downloadProgress.visibility = View.GONE
+                        initPipeline(modelDir)
+                    }
+                    WorkInfo.State.FAILED -> {
+                        val err = info.outputData.getString(ModelDownloadWorker.KEY_ERROR)
+                            ?: "unknown"
+                        addSystemLine("download failed: $err")
+                        setStatus("error — tap to retry")
+                        statusView.setOnClickListener { retryInit() }
+                    }
+                    WorkInfo.State.CANCELLED -> setStatus("cancelled")
+                }
+            }
+    }
+
+    private fun initPipeline(modelDir: String) {
         lifecycleScope.launch {
             try {
-                val modelDir = ModelManager.ensureModels(
-                    this@MainActivity,
-                    precision = ModelPrecision.INT8,
-                ) { progress ->
-                    val mb = progress.bytesDownloaded / 1_000_000
-                    setStatus("${progress.file} ${progress.completed}/${progress.totalFiles} (${mb} MB)")
-                    runOnUiThread {
-                        downloadProgress.progress =
-                            (progress.completed * 100 / progress.totalFiles).coerceIn(0, 100)
-                    }
-                }
-                runOnUiThread {
-                    downloadProgress.progress = 100
-                    downloadProgress.visibility = View.GONE
-                }
-
                 val config = SpeechConfig(
                     modelDir = modelDir,
                     useNnapi = !isEmulator,

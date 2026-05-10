@@ -23,7 +23,9 @@ import androidx.core.app.ActivityCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
-import audio.soniqo.speech.ModelManager
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import audio.soniqo.speech.ModelDownloadWorker
 import audio.soniqo.speech.ModelPrecision
 import audio.soniqo.speech.SpeechConfig
 import audio.soniqo.speech.SpeechEvent
@@ -176,17 +178,45 @@ class DictationActivity : ComponentActivity() {
     private fun loadPipeline() {
         statusView.text = "initializing..."
 
+        // Models download in a foreground worker so the transfer survives
+        // backgrounding the app. Activity just observes progress.
+        val workId = ModelDownloadWorker.enqueue(applicationContext, ModelPrecision.INT8)
+        WorkManager.getInstance(applicationContext)
+            .getWorkInfoByIdLiveData(workId)
+            .observe(this) { info ->
+                if (info == null) return@observe
+                when (info.state) {
+                    WorkInfo.State.ENQUEUED,
+                    WorkInfo.State.BLOCKED,
+                    WorkInfo.State.RUNNING -> {
+                        val total = info.progress.getInt(ModelDownloadWorker.KEY_TOTAL, 0)
+                        if (total > 0) {
+                            val file = info.progress.getString(ModelDownloadWorker.KEY_FILE) ?: ""
+                            val done = info.progress.getInt(ModelDownloadWorker.KEY_COMPLETED, 0)
+                            statusView.text = "$file $done/$total"
+                        }
+                    }
+                    WorkInfo.State.SUCCEEDED -> {
+                        val modelDir = info.outputData.getString(ModelDownloadWorker.KEY_MODEL_DIR)
+                        if (modelDir == null) {
+                            statusView.text = "worker succeeded but no model dir"
+                            return@observe
+                        }
+                        initPipeline(modelDir)
+                    }
+                    WorkInfo.State.FAILED -> {
+                        val err = info.outputData.getString(ModelDownloadWorker.KEY_ERROR)
+                            ?: "unknown"
+                        statusView.text = "download failed: $err"
+                    }
+                    WorkInfo.State.CANCELLED -> { statusView.text = "cancelled" }
+                }
+            }
+    }
+
+    private fun initPipeline(modelDir: String) {
         lifecycleScope.launch {
             try {
-                val modelDir = ModelManager.ensureModels(
-                    this@DictationActivity,
-                    precision = ModelPrecision.INT8,
-                ) { progress ->
-                    runOnUiThread {
-                        statusView.text = "${progress.file} ${progress.completed}/${progress.totalFiles}"
-                    }
-                }
-
                 val config = SpeechConfig(
                     modelDir = modelDir,
                     useNnapi = false,
