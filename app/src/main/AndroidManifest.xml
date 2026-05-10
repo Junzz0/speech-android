@@ -21,6 +21,17 @@
         <activity android:name=".MainActivity" android:exported="false" />
         <activity android:name=".DictationActivity" android:exported="false" />
 
+        <!-- Settings entry the system Voice-input picker opens via the gear -->
+        <activity
+            android:name=".SpeechRecognitionSettingsActivity"
+            android:exported="true"
+            android:label="Speech recognition settings">
+            <intent-filter>
+                <action android:name="android.speech.action.RECOGNIZER_INTENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name="audio.soniqo.speech.service.SpeechRecognitionService"
             android:exported="true"
