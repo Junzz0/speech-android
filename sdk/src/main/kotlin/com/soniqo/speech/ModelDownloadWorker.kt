@@ -6,11 +6,9 @@ import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationCompat
-import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
-import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -146,15 +144,18 @@ class ModelDownloadWorker(
         // Stable, unlikely-to-collide id (decimal of 0xC0FFEE).
         private const val NOTIFICATION_ID = 12648430
 
-        /** Build a one-shot download request. Requires a network connection. */
+        /**
+         * Build a one-shot download request. No JobScheduler network
+         * constraint — the underlying OkHttp client surfaces network failures
+         * as `IOException`, which the worker translates into `Result.retry()`.
+         * Avoids JobScheduler's `CONSTRAINT_CONNECTIVITY` waiting on a
+         * `VALIDATED` capability, which can sit unsatisfied for a long time
+         * on flaky or captive networks even when the device has working
+         * internet.
+         */
         fun request(precision: ModelPrecision = ModelPrecision.INT8) =
             OneTimeWorkRequestBuilder<ModelDownloadWorker>()
                 .setInputData(workDataOf(KEY_PRECISION to precision.name))
-                .setConstraints(
-                    Constraints.Builder()
-                        .setRequiredNetworkType(NetworkType.CONNECTED)
-                        .build()
-                )
                 .build()
 
         /**
