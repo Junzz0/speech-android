@@ -75,9 +75,10 @@ object ModelManager {
      * and passes [isValidModel] (right ONNX magic, above the per-file size
      * floor) and the cached version matches [MODEL_VERSION].
      *
-     * Cheap and side-effect free — does not start a download. Used by paths
-     * that must answer "are we ready?" without blocking, e.g.
-     * `SpeechRecognitionService.onCheckRecognitionSupport()`.
+     * Cheap and side-effect free — does not start a download. Use this from
+     * `SpeechRecognitionService.onCheckRecognitionSupport()` (or any path
+     * that must not block) to decide whether to invoke [ensureModels] /
+     * `ModelDownloadWorker` first.
      */
     fun areModelsReady(
         context: Context,
@@ -101,6 +102,10 @@ object ModelManager {
             dest.exists() && isValidModel(dest, model.filename)
         }
     }
+
+    /** Path to the model directory for [precision], without downloading. */
+    fun modelDir(context: Context): String =
+        File(context.filesDir, "models").absolutePath
 
     /** Returns the model directory path, downloading models if needed. */
     suspend fun ensureModels(

@@ -17,6 +17,9 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
 import androidx.annotation.RequiresApi
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import audio.soniqo.speech.ModelDownloadWorker
 import audio.soniqo.speech.ModelManager
 import audio.soniqo.speech.ModelPrecision
 import audio.soniqo.speech.SpeechConfig
@@ -29,8 +32,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -256,9 +262,39 @@ open class SpeechRecognitionService : RecognitionService() {
     protected open fun createPipeline(config: SpeechConfig): SpeechPipeline =
         SpeechPipeline(config)
 
-    /** Resolve the model directory. Overridden in tests to skip the download. */
-    protected open suspend fun resolveModelDir(): String =
-        ModelManager.ensureModels(this, ModelPrecision.INT8)
+    /**
+     * Resolve the model directory. If models aren't on disk yet we delegate
+     * to [ModelDownloadWorker] (which runs as a foreground service so the
+     * download survives the bind from Gboard timing out) and suspend until
+     * it reports a terminal state. Suspension is bound to this session's
+     * coroutine — if the framework cancels the request, the worker keeps
+     * running on its own and serves the *next* invocation immediately.
+     *
+     * Overridden in tests to skip the download.
+     */
+    protected open suspend fun resolveModelDir(): String {
+        val ctx = applicationContext
+        if (ModelManager.areModelsReady(ctx, ModelPrecision.INT8)) {
+            return ModelManager.modelDir(ctx)
+        }
+        Log.i(TAG, "models not ready — delegating to ModelDownloadWorker")
+        val workId = ModelDownloadWorker.enqueue(ctx, ModelPrecision.INT8)
+        val info = WorkManager.getInstance(ctx)
+            .getWorkInfoByIdFlow(workId)
+            .filterNotNull()
+            .first { it.state.isFinished }
+        return when (info.state) {
+            WorkInfo.State.SUCCEEDED -> info.outputData
+                .getString(ModelDownloadWorker.KEY_MODEL_DIR)
+                ?: throw IllegalStateException("worker succeeded but no model dir")
+            WorkInfo.State.FAILED -> throw IOException(
+                info.outputData.getString(ModelDownloadWorker.KEY_ERROR)
+                    ?: "model download failed",
+            )
+            WorkInfo.State.CANCELLED -> throw IllegalStateException("model download cancelled")
+            else -> throw IllegalStateException("unexpected worker state: ${info.state}")
+        }
+    }
 
     /**
      * Open the microphone. Returns null when the format is unsupported on this
