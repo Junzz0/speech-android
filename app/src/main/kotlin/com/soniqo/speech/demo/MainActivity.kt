@@ -22,6 +22,8 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.core.app.ActivityCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import audio.soniqo.speech.ModelManager
 import audio.soniqo.speech.ModelPrecision
@@ -72,6 +74,14 @@ class MainActivity : ComponentActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#0F0F0F"))
+        }
+
+        // Android 15 / One UI 8 force edge-to-edge — without this, the mic
+        // button at the bottom slides under the gesture-nav bar.
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+            val sb = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.setPadding(v.paddingLeft, sb.top, v.paddingRight, sb.bottom)
+            insets
         }
 
         // Status bar

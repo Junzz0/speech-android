@@ -9,6 +9,8 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import audio.soniqo.speech.ModelManager
 import audio.soniqo.speech.ModelPrecision
 import audio.soniqo.speech.service.SpeechRecognitionService
@@ -29,6 +31,18 @@ class SpeechRecognitionSettingsActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#0F0F0F"))
             setPadding(64, 96, 64, 64)
+        }
+
+        // Edge-to-edge insets — push content below status bar / above nav.
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+            val sb = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.setPadding(
+                v.paddingLeft,
+                v.paddingTop + sb.top,
+                v.paddingRight,
+                v.paddingBottom + sb.bottom,
+            )
+            insets
         }
 
         root.addView(TextView(this).apply {
