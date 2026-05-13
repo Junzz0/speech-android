@@ -66,24 +66,6 @@ else
     echo "ONNX Runtime already installed"
 fi
 
-# --- .gitignore ---
-
-cat > "${ROOT}/.gitignore" << 'GITIGNORE'
-# Build
-.gradle/
-build/
-*.iml
-.idea/
-local.properties
-
-# ONNX Runtime (downloaded by setup.sh)
-/ort/
-
-# Native build artifacts
-.cxx/
-.externalNativeBuild/
-GITIGNORE
-
 echo ""
 echo "Done. Open the project in Android Studio or run:"
 echo "  ./gradlew :app:assembleDebug"

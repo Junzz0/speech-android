@@ -6,71 +6,41 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ---------------------------------------------------------------------------
 # speech-core (git submodule)
+#
+# Pull in speech-core via add_subdirectory so we reuse its target definitions
+# rather than re-listing sources here. SPEECH_CORE_WITH_ONNX=ON adds the
+# speech_core_models target (Silero VAD / Parakeet STT / Kokoro TTS /
+# DeepFilterNet wrappers). Tests and examples are off — the Android NDK
+# can't run host ctest binaries anyway.
 # ---------------------------------------------------------------------------
 
 if(NOT DEFINED SPEECH_CORE_DIR)
-    message(FATAL_ERROR "SPEECH_CORE_DIR must be set")
+    message(FATAL_ERROR "SPEECH_CORE_DIR must be set (path to the speech-core submodule)")
 endif()
-
-set(SPEECH_CORE_SOURCES
-    ${SPEECH_CORE_DIR}/src/pipeline/voice_pipeline.cpp
-    ${SPEECH_CORE_DIR}/src/pipeline/turn_detector.cpp
-    ${SPEECH_CORE_DIR}/src/pipeline/speech_queue.cpp
-    ${SPEECH_CORE_DIR}/src/pipeline/conversation_context.cpp
-    ${SPEECH_CORE_DIR}/src/vad/streaming_vad.cpp
-    ${SPEECH_CORE_DIR}/src/audio/audio_buffer.cpp
-    ${SPEECH_CORE_DIR}/src/audio/resampler.cpp
-    ${SPEECH_CORE_DIR}/src/audio/pcm_codec.cpp
-    ${SPEECH_CORE_DIR}/src/tools/tool_registry.cpp
-    ${SPEECH_CORE_DIR}/src/tools/intent_matcher.cpp
-    ${SPEECH_CORE_DIR}/src/tools/tool_executor.cpp
-    ${SPEECH_CORE_DIR}/src/speech_core_c.cpp
-)
-
-add_library(speech_core STATIC ${SPEECH_CORE_SOURCES})
-target_include_directories(speech_core PUBLIC ${SPEECH_CORE_DIR}/include)
-target_compile_options(speech_core PRIVATE -O2)
-
-# ---------------------------------------------------------------------------
-# ONNX Runtime (prebuilt)
-# ---------------------------------------------------------------------------
 
 if(NOT DEFINED ORT_DIR)
-    message(FATAL_ERROR "ORT_DIR must be set (path to onnxruntime with include/ and lib/)")
+    message(FATAL_ERROR "ORT_DIR must be set (path to onnxruntime with include/ and lib/${ANDROID_ABI}/libonnxruntime.so)")
 endif()
 
-add_library(onnxruntime SHARED IMPORTED)
-set_target_properties(onnxruntime PROPERTIES
-    IMPORTED_LOCATION ${ORT_DIR}/lib/${ANDROID_ABI}/libonnxruntime.so
-)
+set(SPEECH_CORE_WITH_ONNX     ON  CACHE BOOL "" FORCE)
+set(SPEECH_CORE_BUILD_TESTS   OFF CACHE BOOL "" FORCE)
+set(SPEECH_CORE_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+
+add_subdirectory(${SPEECH_CORE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/speech_core)
 
 # ---------------------------------------------------------------------------
-# speech-android native library
+# speech-android native library — JNI bridge only
+#
+# All audio DSP / model wrappers / onnx_engine now live in speech-core's
+# speech_core_models target. The bridge just constructs them and feeds
+# them into speech_core::VoicePipeline.
 # ---------------------------------------------------------------------------
 
-add_library(speech_android SHARED
-    jni_bridge.cpp
-    audio/mel.cpp
-    audio/fft.cpp
-    audio/stft.cpp
-    models/soc_detect.cpp
-    models/silero_vad.cpp
-    models/parakeet_stt.cpp
-    models/kokoro_tts.cpp
-    models/kokoro_phonemizer.cpp
-    models/kokoro_multilingual.cpp
-    models/deepfilter.cpp
-)
-
-target_include_directories(speech_android PRIVATE
-    ${ORT_DIR}/include
-    ${SPEECH_CORE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}
-)
+add_library(speech_android SHARED jni_bridge.cpp)
 
 target_link_libraries(speech_android
-    speech_core
-    onnxruntime
-    android
-    log
+    PRIVATE
+        speech_core_models
+        android
+        log
 )

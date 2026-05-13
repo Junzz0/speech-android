@@ -1,41 +1,42 @@
 #include <jni.h>
 #include <android/log.h>
-#include <string>
-#include <cstdint>
 
-#include <speech_core/speech_core_c.h>
-#include "models/onnx_engine.h"
-#include "models/silero_vad.h"
-#include "models/parakeet_stt.h"
-#include "models/kokoro_tts.h"
-#include "models/deepfilter.h"
+#include <speech_core/models/deepfilter.h>
+#include <speech_core/models/kokoro_tts.h>
+#include <speech_core/models/onnx_engine.h>
+#include <speech_core/models/parakeet_stt.h>
+#include <speech_core/models/silero_vad.h>
+#include <speech_core/pipeline/agent_config.h>
+#include <speech_core/pipeline/voice_pipeline.h>
+
+#include <cstdint>
+#include <memory>
+#include <string>
 
 #define LOG_TAG "Speech"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 // ---------------------------------------------------------------------------
-// Pipeline handle — owns all native objects for one pipeline instance
+// Pipeline handle
+//
+// speech_core::* model wrappers directly implement the speech_core interfaces
+// (VADInterface / STTInterface / TTSInterface / EnhancerInterface), so the
+// JNI bridge constructs them and hands references to VoicePipeline. No
+// C-vtable adapters needed — the entire vtable boilerplate that used to live
+// here was deleted in this change.
 // ---------------------------------------------------------------------------
 
 struct PipelineHandle {
-    sc_pipeline_t pipeline = nullptr;
-    SileroVad* vad = nullptr;
-    ParakeetStt* stt = nullptr;
-    KokoroTts* tts = nullptr;
-    DeepFilterEnhancer* enhancer = nullptr;
+    std::unique_ptr<speech_core::SileroVad> vad;
+    std::unique_ptr<speech_core::ParakeetStt> stt;
+    std::unique_ptr<speech_core::KokoroTts> tts;
+    std::unique_ptr<speech_core::DeepFilterEnhancer> enhancer;
+    std::unique_ptr<speech_core::VoicePipeline> pipeline;
 
     JavaVM* jvm = nullptr;
     jobject callback = nullptr;
     jmethodID on_event_mid = nullptr;
-
-    ~PipelineHandle() {
-        if (pipeline) sc_pipeline_destroy(pipeline);
-        delete enhancer;
-        delete tts;
-        delete stt;
-        delete vad;
-    }
 };
 
 // ---------------------------------------------------------------------------
@@ -51,152 +52,68 @@ static JNIEnv* get_env(JavaVM* jvm) {
 }
 
 // ---------------------------------------------------------------------------
-// speech-core vtable adapters
+// Pipeline event → Kotlin onEvent
+//
+// Kotlin signature unchanged:
+//   void onEvent(int type, String text, byte[] audio,
+//                float confidence, float sttMs, float ttsMs)
 // ---------------------------------------------------------------------------
 
-// --- VAD ---
-
-static float vad_process_chunk(void* ctx, const float* samples, size_t len) {
-    return static_cast<SileroVad*>(ctx)->process_chunk(samples, len);
-}
-static void vad_reset(void* ctx) {
-    static_cast<SileroVad*>(ctx)->reset();
-}
-static int vad_sample_rate(void* ctx) {
-    return static_cast<SileroVad*>(ctx)->input_sample_rate();
-}
-static size_t vad_chunk_size(void* ctx) {
-    return static_cast<SileroVad*>(ctx)->chunk_size();
-}
-
-// --- STT ---
-
-static sc_transcription_result_t stt_transcribe(
-    void* ctx, const float* audio, size_t len, int sr)
-{
-    auto* stt = static_cast<ParakeetStt*>(ctx);
-    auto r = stt->transcribe(audio, len, sr);
-
-    // Static buffers — valid until next call (per C API contract)
-    static thread_local std::string text_buf;
-    static thread_local std::string lang_buf;
-    text_buf = std::move(r.text);
-    lang_buf = std::move(r.language);
-
-    return {
-        .text = text_buf.c_str(),
-        .language = lang_buf.empty() ? nullptr : lang_buf.c_str(),
-        .confidence = r.confidence,
-        .start_time = 0.0f,
-        .end_time = 0.0f,
-    };
-}
-static int stt_sample_rate(void* ctx) {
-    return static_cast<ParakeetStt*>(ctx)->input_sample_rate();
+// Map speech_core::EventType → the int values the Kotlin side expects.
+//
+// Kotlin's SpeechPipeline.kt switches on raw ints inherited from the original
+// C ABI (sc_event_t.type), whose ordering differs from speech_core::EventType:
+// the C ABI had ResponseAudioDelta=7 / ResponseDone=8, the enum has them
+// swapped. Map explicitly so renumbering speech_core::EventType in the future
+// can't silently break the Kotlin event stream.
+static jint to_kotlin_event(speech_core::EventType t) {
+    using ET = speech_core::EventType;
+    switch (t) {
+        case ET::SessionCreated:         return 0;
+        case ET::SpeechStarted:          return 1;
+        case ET::SpeechEnded:            return 2;
+        case ET::PartialTranscription:   return 3;
+        case ET::TranscriptionCompleted: return 4;
+        case ET::ResponseCreated:        return 5;
+        case ET::ResponseInterrupted:    return 6;
+        case ET::ResponseAudioDelta:     return 7;
+        case ET::ResponseDone:           return 8;
+        case ET::ToolCallStarted:        return 9;
+        case ET::ToolCallCompleted:      return 10;
+        case ET::Error:                  return 11;
+    }
+    return -1;
 }
 
-static void stt_begin_stream(void* ctx, int sample_rate) {
-    static_cast<ParakeetStt*>(ctx)->begin_stream(sample_rate);
-}
-
-static sc_partial_result_t stt_push_chunk(void* ctx, const float* audio, size_t len) {
-    auto* stt = static_cast<ParakeetStt*>(ctx);
-    auto r = stt->push_chunk(audio, len);
-    static thread_local std::string text_buf;
-    static thread_local std::string lang_buf;
-    text_buf = std::move(r.text);
-    lang_buf = std::move(r.language);
-    return {
-        .text = text_buf.c_str(),
-        .language = lang_buf.empty() ? nullptr : lang_buf.c_str(),
-        .confidence = r.confidence,
-    };
-}
-
-static void stt_flush_stream(void* ctx) {
-    static_cast<ParakeetStt*>(ctx)->flush_stream();
-}
-
-static sc_transcription_result_t stt_end_stream(void* ctx) {
-    auto* stt = static_cast<ParakeetStt*>(ctx);
-    auto r = stt->end_stream();
-    static thread_local std::string text_buf;
-    static thread_local std::string lang_buf;
-    text_buf = std::move(r.text);
-    lang_buf = std::move(r.language);
-    return {
-        .text = text_buf.c_str(),
-        .language = lang_buf.empty() ? nullptr : lang_buf.c_str(),
-        .confidence = r.confidence,
-        .start_time = 0.0f,
-        .end_time = 0.0f,
-    };
-}
-
-static void stt_cancel_stream(void* ctx) {
-    static_cast<ParakeetStt*>(ctx)->cancel_stream();
-}
-
-// --- TTS ---
-
-static void tts_synthesize(
-    void* ctx, const char* text, const char* language,
-    sc_tts_chunk_fn on_chunk, void* chunk_ctx)
-{
-    auto* tts = static_cast<KokoroTts*>(ctx);
-    tts->synthesize(text, language, on_chunk, chunk_ctx);
-}
-static int tts_sample_rate(void* ctx) {
-    return static_cast<KokoroTts*>(ctx)->output_sample_rate();
-}
-static void tts_cancel(void* ctx) {
-    static_cast<KokoroTts*>(ctx)->cancel();
-}
-
-// --- Enhancer ---
-
-static void enhancer_enhance(
-    void* ctx, const float* input, size_t len, int sr, float* output)
-{
-    static_cast<DeepFilterEnhancer*>(ctx)->enhance(input, len, sr, output);
-}
-static int enhancer_sample_rate(void* ctx) {
-    return static_cast<DeepFilterEnhancer*>(ctx)->input_sample_rate();
-}
-
-// ---------------------------------------------------------------------------
-// Event callback → Kotlin
-// ---------------------------------------------------------------------------
-
-static void on_pipeline_event(const sc_event_t* event, void* context) {
-    auto* handle = static_cast<PipelineHandle*>(context);
+static void dispatch_event(PipelineHandle* h,
+                           const speech_core::PipelineEvent& event) {
     LOGI("event type=%d text='%.60s' audio=%zu stt=%.0fms tts=%.0fms",
-         event->type, event->text ? event->text : "",
-         event->audio_data_length, event->stt_duration_ms, event->tts_duration_ms);
-    if (!handle->callback) return;
+         static_cast<int>(event.type), event.text.c_str(),
+         event.audio_data.size(), event.stt_duration_ms,
+         event.tts_duration_ms);
 
-    JNIEnv* env = get_env(handle->jvm);
+    if (!h->callback) return;
+
+    JNIEnv* env = get_env(h->jvm);
     if (!env) return;
 
-    jstring text = event->text
-        ? env->NewStringUTF(event->text) : nullptr;
+    jstring text = !event.text.empty()
+        ? env->NewStringUTF(event.text.c_str()) : nullptr;
 
     jbyteArray audio = nullptr;
-    if (event->audio_data && event->audio_data_length > 0) {
-        audio = env->NewByteArray(static_cast<jsize>(event->audio_data_length));
+    if (!event.audio_data.empty()) {
+        audio = env->NewByteArray(static_cast<jsize>(event.audio_data.size()));
         env->SetByteArrayRegion(audio, 0,
-            static_cast<jsize>(event->audio_data_length),
-            reinterpret_cast<const jbyte*>(event->audio_data));
+            static_cast<jsize>(event.audio_data.size()),
+            reinterpret_cast<const jbyte*>(event.audio_data.data()));
     }
 
-    // void onEvent(int type, String text, byte[] audio,
-    //              float confidence, float sttMs, float ttsMs)
-    env->CallVoidMethod(handle->callback, handle->on_event_mid,
-        static_cast<jint>(event->type),
+    env->CallVoidMethod(h->callback, h->on_event_mid,
+        to_kotlin_event(event.type),
         text, audio,
-        event->confidence,
-        event->stt_duration_ms,
-        event->tts_duration_ms);
+        event.confidence,
+        event.stt_duration_ms,
+        event.tts_duration_ms);
 
     if (audio) env->DeleteLocalRef(audio);
     if (text) env->DeleteLocalRef(text);
@@ -227,7 +144,7 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
     bool nnapi = useNnapi;
     std::string suffix = useInt8 ? "-int8" : "";
 
-    auto* h = new PipelineHandle();
+    auto h = std::make_unique<PipelineHandle>();
     env->GetJavaVM(&h->jvm);
     h->callback = env->NewGlobalRef(callback);
 
@@ -238,62 +155,38 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
 
     try {
         // Load models
-        h->vad = new SileroVad(dir + "/silero-vad.onnx", false);
-        h->stt = new ParakeetStt(
+        h->vad = std::make_unique<speech_core::SileroVad>(
+            dir + "/silero-vad.onnx", /*hw_accel=*/false);
+        h->stt = std::make_unique<speech_core::ParakeetStt>(
             dir + "/parakeet-encoder" + suffix + ".onnx",
             dir + "/parakeet-decoder-joint" + suffix + ".onnx",
             dir + "/vocab.json",
             nnapi);
-        h->tts = new KokoroTts(
+        h->tts = std::make_unique<speech_core::KokoroTts>(
             dir + "/kokoro-e2e.onnx",
             dir + "/voices",
             dir,
             nnapi);
 
-        // Build vtables
-        sc_vad_vtable_t vad_vt = {
-            .context = h->vad,
-            .process_chunk = vad_process_chunk,
-            .reset = vad_reset,
-            .input_sample_rate = vad_sample_rate,
-            .chunk_size = vad_chunk_size,
-        };
-
-        sc_stt_vtable_t stt_vt = {};
-        stt_vt.context = h->stt;
-        stt_vt.transcribe = stt_transcribe;
-        stt_vt.input_sample_rate = stt_sample_rate;
-        stt_vt.begin_stream = stt_begin_stream;
-        stt_vt.push_chunk = stt_push_chunk;
-        stt_vt.flush_stream = stt_flush_stream;
-        stt_vt.end_stream = stt_end_stream;
-        stt_vt.cancel_stream = stt_cancel_stream;
-
-        sc_tts_vtable_t tts_vt = {};
-        tts_vt.context = h->tts;
-        tts_vt.synthesize = tts_synthesize;
-        tts_vt.output_sample_rate = tts_sample_rate;
-        tts_vt.cancel = tts_cancel;
-
-        // Pipeline config
-        sc_config_t config = sc_config_default();
-        config.min_silence_duration = 0.5f;
-        config.eager_stt = false;
-        config.min_speech_duration = 0.15f;
-        config.post_playback_guard = 0.15f;
-        config.emit_partial_transcriptions = emitPartialTranscriptions;
-        config.partial_transcription_interval = partialTranscriptionInterval;
-
-        config.mode = SC_MODE_ECHO;
-        h->pipeline = sc_pipeline_create(
-            stt_vt, tts_vt, nullptr, vad_vt,
-            config, on_pipeline_event, h);
+        speech_core::AgentConfig cfg;
+        cfg.vad.min_silence_duration = 0.5f;
+        cfg.vad.min_speech_duration = 0.15f;
+        cfg.eager_stt = false;
+        cfg.post_playback_guard = 0.15f;
+        cfg.emit_partial_transcriptions = emitPartialTranscriptions;
+        cfg.partial_transcription_interval = partialTranscriptionInterval;
+        cfg.mode = speech_core::AgentConfig::Mode::Echo;
 
         // Note: DeepFilterNet3 noise cancellation is disabled in the pipeline.
-        // DFN operates at 48kHz but the pipeline pushes 16kHz audio — running
-        // DFN without resampling produces artifacts. Needs 16k→48k→DFN→48k→16k
-        // resample chain before it can be re-enabled. See issue #12.
-        // The model is still downloaded for future use.
+        // DFN operates at 48 kHz but the pipeline pushes 16 kHz audio —
+        // running DFN without resampling produces artifacts. Needs a
+        // 16k→48k→DFN→48k→16k resample chain before it can be re-enabled.
+        // See issue #12. The model is still downloaded for future use.
+
+        PipelineHandle* raw = h.get();
+        h->pipeline = std::make_unique<speech_core::VoicePipeline>(
+            *h->stt, *h->tts, /*llm=*/nullptr, *h->vad, cfg,
+            [raw](const speech_core::PipelineEvent& e) { dispatch_event(raw, e); });
 
         auto& engine = OnnxEngine::get();
         if (engine.had_nnapi_fallback()) {
@@ -305,7 +198,6 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
     } catch (const std::exception& e) {
         LOGE("Pipeline creation failed: %s", e.what());
         if (h->callback) env->DeleteGlobalRef(h->callback);
-        delete h;
         jclass ex_cls = env->FindClass("java/lang/RuntimeException");
         if (ex_cls) {
             std::string msg = std::string("Native pipeline failed: ") + e.what();
@@ -314,7 +206,7 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
         return 0;
     }
 
-    return reinterpret_cast<jlong>(h);
+    return reinterpret_cast<jlong>(h.release());
 }
 
 JNIEXPORT jstring JNICALL
@@ -344,7 +236,7 @@ Java_audio_soniqo_speech_NativeBridge_nativeStart(
     JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
 {
     auto* h = reinterpret_cast<PipelineHandle*>(handle);
-    if (h && h->pipeline) sc_pipeline_start(h->pipeline);
+    if (h && h->pipeline) h->pipeline->start();
 }
 
 JNIEXPORT void JNICALL
@@ -352,7 +244,7 @@ Java_audio_soniqo_speech_NativeBridge_nativeStop(
     JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
 {
     auto* h = reinterpret_cast<PipelineHandle*>(handle);
-    if (h && h->pipeline) sc_pipeline_stop(h->pipeline);
+    if (h && h->pipeline) h->pipeline->stop();
 }
 
 JNIEXPORT void JNICALL
@@ -364,7 +256,7 @@ Java_audio_soniqo_speech_NativeBridge_nativePushAudio(
     if (!h || !h->pipeline) return;
 
     float* data = env->GetFloatArrayElements(samples, nullptr);
-    sc_pipeline_push_audio(h->pipeline, data, static_cast<size_t>(count));
+    h->pipeline->push_audio(data, static_cast<size_t>(count));
     env->ReleaseFloatArrayElements(samples, data, JNI_ABORT);
 }
 
@@ -373,7 +265,7 @@ Java_audio_soniqo_speech_NativeBridge_nativeResumeListen(
     JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
 {
     auto* h = reinterpret_cast<PipelineHandle*>(handle);
-    if (h && h->pipeline) sc_pipeline_resume_listening(h->pipeline);
+    if (h && h->pipeline) h->pipeline->resume_listening();
 }
 
 JNIEXPORT jint JNICALL
@@ -381,8 +273,8 @@ Java_audio_soniqo_speech_NativeBridge_nativeGetState(
     JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
 {
     auto* h = reinterpret_cast<PipelineHandle*>(handle);
-    if (!h || !h->pipeline) return SC_STATE_IDLE;
-    return sc_pipeline_state(h->pipeline);
+    if (!h || !h->pipeline) return 0;
+    return static_cast<jint>(h->pipeline->state());
 }
 
 } // extern "C"

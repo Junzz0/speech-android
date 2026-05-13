@@ -2,18 +2,15 @@
 
 📖 Sprachen: [English](README.md) · [中文](README_zh.md) · [日本語](README_ja.md) · [한국어](README_ko.md) · [Español](README_es.md) · [Deutsch](README_de.md) · [Français](README_fr.md) · [हिन्दी](README_hi.md) · [Português](README_pt.md) · [Русский](README_ru.md)
 
-On-Device Speech-SDK für Android und Embedded Linux, basierend auf [ONNX Runtime](https://onnxruntime.ai) und [speech-core](https://github.com/soniqo/speech-core).
+On-Device Speech-SDK für Android, basierend auf [ONNX Runtime](https://onnxruntime.ai) und [speech-core](https://github.com/soniqo/speech-core).
 
 Spracherkennung (114 Sprachen), Text-to-Speech (8 Sprachen), Sprachaktivitätserkennung und Rauschunterdrückung — alles lokal ausgeführt. Keine Cloud-APIs, keine Daten verlassen das Gerät.
 
-**[Demo-APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[Modelle](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)** (Apple-Pendant) · **[speech-core](https://github.com/soniqo/speech-core)** (Pipeline-Engine)
+**[Demo-APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[Modelle](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)** (Apple-Pendant) · **[speech-core](https://github.com/soniqo/speech-core)** (Pipeline-Engine + Linux/Embedded-Build)
 
-## Plattformen
+## Geltungsbereich
 
-| Plattform | API | Beschleunigung | Verzeichnis |
-| --- | --- | --- | --- |
-| Android | Kotlin (`SpeechPipeline`) | NNAPI (Snapdragon, Exynos, Tensor) | `sdk/` |
-| Embedded Linux | C (`speech.h`) | QNN (Hexagon DSP) | `linux/` |
+Dieses Repo ist das **Android-Packaging**: Kotlin-SDK, JNI-Bridge, Demo-App. Die C++-Engine und die ONNX-Modell-Wrapper (Silero VAD, Parakeet STT, Kokoro TTS, DeepFilterNet3) liegen in [speech-core](https://github.com/soniqo/speech-core) und werden über ein Git-Submodul eingebunden. Linux / Automotive (Yocto, Qualcomm SA8295P/SA8255P) befindet sich unter [speech-core/examples/linux](https://github.com/soniqo/speech-core/tree/main/examples/linux).
 
 ## Modelle
 
@@ -24,15 +21,13 @@ Spracherkennung (114 Sprachen), Text-to-Speech (8 Sprachen), Sprachaktivitätser
 | [Silero VAD v5](https://huggingface.co/aufklarer/Silero-VAD-v5-ONNX) | Sprachaktivitätserkennung | 2 MB | Beliebig |
 | [DeepFilterNet3](https://huggingface.co/aufklarer/DeepFilterNet3-ONNX) | Rauschunterdrückung | ~8 MB | Beliebig |
 
-Modelle werden beim ersten Start automatisch heruntergeladen (Android) oder manuell platziert (Linux).
+Modelle werden beim ersten Start automatisch über `ModelManager.ensureModels()` heruntergeladen.
 
-## Android
-
-### Demo ausprobieren
+## Demo ausprobieren
 
 Lade das [signierte APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk) herunter und installiere es auf einem beliebigen arm64-Android-Gerät (8+). Modelle (~1,2 GB) werden beim ersten Start automatisch heruntergeladen.
 
-### Abhängigkeit hinzufügen
+## Abhängigkeit hinzufügen
 
 ```kotlin
 dependencies {
@@ -40,7 +35,7 @@ dependencies {
 }
 ```
 
-### Kotlin-Verwendung
+## Kotlin-Verwendung
 
 ```kotlin
 val modelDir = ModelManager.ensureModels(context)
@@ -63,7 +58,7 @@ pipeline.start()
 pipeline.pushAudio(samples)
 ```
 
-### Aus dem Quellcode bauen
+## Aus dem Quellcode bauen
 
 ```bash
 git clone --recursive https://github.com/soniqo/speech-android.git
@@ -73,7 +68,10 @@ cd speech-android
 ./gradlew :sdk:connectedAndroidTest   # 34 e2e-Tests
 ```
 
-### Demo-App
+`./setup.sh` initialisiert das speech-core-Submodul und lädt die ONNX Runtime
+nach `./ort/` herunter.
+
+## Demo-App
 
 Das Modul [`app/`](app/) ist eine minimale Sprachassistenten-Demo mit:
 
@@ -87,7 +85,7 @@ Das Modul [`app/`](app/) ist eine minimale Sprachassistenten-Demo mit:
 ./gradlew :app:installDebug
 ```
 
-### Systemweite Spracheingabe (`RecognitionService`)
+## Systemweite Spracheingabe (`RecognitionService`)
 
 Das SDK enthält einen einsatzbereiten `audio.soniqo.speech.service.SpeechRecognitionService`, der sich in die `SpeechRecognizer`-API des Android-Frameworks einklinkt — kein Code zu schreiben. Sobald deine App als Standard-Spracherkennung ausgewählt ist, erhält jede Drittanbieter-App, die `SpeechRecognizer.createSpeechRecognizer(context)` (ohne `ComponentName`) aufruft, vollständiges On-Device-STT über deine Pipeline.
 
@@ -143,53 +141,6 @@ Gemessen auf einem Android-Emulator (arm64-v8a, ohne NNAPI). Echte Hardware ist 
 | Kokoro 82M | TTS | 1,9s Ausgabe | 1.075ms | 0,58 |
 | Silero VAD v5 | VAD | 32ms-Block | <1ms | <0,01 |
 
-## Embedded Linux
-
-Minimale C-API für Automotive- und Embedded-Plattformen. Vollständige Dokumentation siehe [`linux/README.md`](linux/README.md).
-
-### C-API-Verwendung
-
-```c
-#include <speech.h>
-
-void on_event(const speech_event_t* event, void* ctx) {
-    if (event->type == SPEECH_EVENT_TRANSCRIPTION)
-        printf("%s\n", event->text);
-}
-
-speech_config_t cfg = speech_config_default();
-cfg.model_dir = "/opt/speech/models";
-cfg.use_qnn = true;  // Hexagon-DSP-Beschleunigung
-
-speech_pipeline_t p = speech_create(cfg, on_event, NULL);
-speech_start(p);
-speech_push_audio(p, pcm_samples, 512);
-```
-
-### Bauen
-
-```bash
-cd linux && ./setup_linux.sh
-cmake -B build -DORT_DIR=../ort-linux
-cmake --build build
-./build/speech_demo --model-dir /path/to/models
-```
-
-### Testen
-
-```bash
-linux/tests/download_models.sh              # ONNX-Modelle herunterladen
-SPEECH_MODEL_DIR=tests/models ./build/speech_test   # 12 Tests
-```
-
-### Cross-Compile für Yocto
-
-```bash
-source /opt/poky/environment-setup-aarch64-poky-linux
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=toolchain-aarch64.cmake -DORT_DIR=...
-cmake --build build
-```
-
 ## Pipeline
 
 ```text
@@ -204,41 +155,51 @@ Barge-In wird unterstützt: Sprechen während der TTS-Wiedergabe unterbricht und
 
 ```text
 ┌──────────────────────────────────────────────┐
-│   Android: SpeechPipeline (Kotlin/JNI)       │
-│   Linux:   speech.h (C API)                  │
-└──────────────────┬───────────────────────────┘
-                   │
-┌──────────────────┴───────────────────────────┐
-│            speech-core (C++ submodule)        │
-│   Turn detection · Interruptions · Context   │
-└──┬────────┬────────┬────────┬────────────────┘
-   │        │        │        │  vtables
-┌──┴──┐  ┌──┴──┐  ┌──┴──┐  ┌─┴────────┐
-│ VAD │  │ STT │  │ TTS │  │ Enhancer │
-│Silero│  │Para-│  │Koko-│  │DeepFilter│
-│     │  │keet │  │ro   │  │Net3      │
-└──┬──┘  └──┬──┘  └──┬──┘  └─┬────────┘
-   └────────┴────────┴────────┘
-       ONNX Runtime (CPU / NNAPI / QNN)
+│      SpeechPipeline (Kotlin)                 │
+│            │                                 │
+│            ▼                                 │
+│      jni_bridge.cpp  (~250 Zeilen)           │
+│            │                                 │
+│            ▼                                 │
+│  ┌──────────────────────────────────────┐    │
+│  │  speech_core_models (Git-Submodul)   │    │
+│  │   SileroVad / ParakeetStt /          │    │
+│  │   KokoroTts / DeepFilterEnhancer     │    │
+│  │            │                         │    │
+│  │            ▼                         │    │
+│  │  speech_core  (Orchestrierung:       │    │
+│  │   Pipeline · Turn · Interruptions)   │    │
+│  └──────────────────────────────────────┘    │
+│            │                                 │
+│            ▼                                 │
+│      ONNX Runtime (CPU / NNAPI)              │
+└──────────────────────────────────────────────┘
 ```
+
+Jede Modellklasse implementiert direkt die entsprechende speech-core-Schnittstelle
+(`VADInterface`, `STTInterface`, `TTSInterface`, `EnhancerInterface`) — die
+JNI-Bridge instanziiert sie und übergibt Referenzen an `VoicePipeline`. Kein
+C-vtable-Adapter-Boilerplate.
 
 ## Hardwarebeschleunigung
 
-| Plattform | Chipsatz | Beschleunigung |
-| --- | --- | --- |
-| Android | Snapdragon 8 Gen 1+ | NNAPI → Hexagon NPU |
-| Android | Samsung Exynos 2200+ | NNAPI → Samsung NPU |
-| Android | Google Tensor G2+ | NNAPI → Google TPU |
-| Automotive | SA8295P / SA8255P | QNN → Hexagon DSP |
-| Beliebig | CPU-Fallback | XNNPACK |
+| Chipsatz | Beschleunigung |
+| --- | --- |
+| Snapdragon 8 Gen 1+ | NNAPI → Hexagon NPU |
+| Samsung Exynos 2200+ | NNAPI → Samsung NPU |
+| Google Tensor G2+ | NNAPI → Google TPU |
+| CPU-Fallback | XNNPACK |
+
+Für Automotive Qualcomm SA8295P / SA8255P mit QNN (Hexagon DSP) siehe
+[speech-core/examples/linux](https://github.com/soniqo/speech-core/tree/main/examples/linux).
 
 ## Verwandte Projekte
 
-| Repository | Plattform |
+| Repository | Geltungsbereich |
 | --- | --- |
 | [speech-swift](https://github.com/soniqo/speech-swift) | Apple (macOS, iOS) — MLX + CoreML |
-| [speech-core](https://github.com/soniqo/speech-core) | Plattformübergreifende C++-Pipeline-Engine |
-| **speech-android** | Android + Embedded Linux — ONNX Runtime |
+| [speech-core](https://github.com/soniqo/speech-core) | Plattformübergreifende C++-Pipeline-Engine + ONNX-Modell-Wrapper + Linux/Embedded-Beispiele |
+| **speech-android** | Android-Wrapper — Kotlin-SDK + JNI-Bridge über speech-core |
 
 ## Lizenz
 

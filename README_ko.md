@@ -2,18 +2,15 @@
 
 📖 언어: [English](README.md) · [中文](README_zh.md) · [日本語](README_ja.md) · [한국어](README_ko.md) · [Español](README_es.md) · [Deutsch](README_de.md) · [Français](README_fr.md) · [हिन्दी](README_hi.md) · [Português](README_pt.md) · [Русский](README_ru.md)
 
-[ONNX Runtime](https://onnxruntime.ai)와 [speech-core](https://github.com/soniqo/speech-core) 기반의 Android 및 임베디드 Linux용 온디바이스 음성 SDK.
+[ONNX Runtime](https://onnxruntime.ai)와 [speech-core](https://github.com/soniqo/speech-core) 기반의 Android용 온디바이스 음성 SDK.
 
 음성 인식(114개 언어), 텍스트 음성 변환(8개 언어), 음성 활동 감지, 노이즈 캔슬링 — 모두 로컬에서 실행됩니다. 클라우드 API도, 디바이스 외부로 전송되는 데이터도 없습니다.
 
-**[데모 APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[모델](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)**(Apple 버전) · **[speech-core](https://github.com/soniqo/speech-core)**(파이프라인 엔진)
+**[데모 APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[모델](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)**(Apple 버전) · **[speech-core](https://github.com/soniqo/speech-core)**(파이프라인 엔진 + Linux/임베디드 빌드)
 
-## 플랫폼
+## 범위
 
-| 플랫폼 | API | 가속 | 디렉토리 |
-| --- | --- | --- | --- |
-| Android | Kotlin (`SpeechPipeline`) | NNAPI(Snapdragon, Exynos, Tensor) | `sdk/` |
-| 임베디드 Linux | C (`speech.h`) | QNN(Hexagon DSP) | `linux/` |
+이 저장소는 **Android 패키징**입니다: Kotlin SDK, JNI 브리지, 데모 앱. C++ 엔진과 ONNX 모델 래퍼(Silero VAD, Parakeet STT, Kokoro TTS, DeepFilterNet3)는 [speech-core](https://github.com/soniqo/speech-core)에 있으며 git 서브모듈을 통해 가져옵니다. Linux / 자동차(Yocto, Qualcomm SA8295P/SA8255P)는 [speech-core/examples/linux](https://github.com/soniqo/speech-core/tree/main/examples/linux)에 있습니다.
 
 ## 모델
 
@@ -24,15 +21,13 @@
 | [Silero VAD v5](https://huggingface.co/aufklarer/Silero-VAD-v5-ONNX) | 음성 활동 감지 | 2 MB | 모든 언어 |
 | [DeepFilterNet3](https://huggingface.co/aufklarer/DeepFilterNet3-ONNX) | 노이즈 캔슬링 | ~8 MB | 모든 언어 |
 
-모델은 첫 실행 시 자동 다운로드(Android)되거나 수동으로 배치(Linux)됩니다.
+모델은 `ModelManager.ensureModels()`를 통해 첫 실행 시 자동으로 다운로드됩니다.
 
-## Android
-
-### 데모 사용해보기
+## 데모 사용해보기
 
 [서명된 APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)를 다운로드하여 arm64 Android 기기(8 이상)에 설치하세요. 모델(~1.2 GB)은 첫 실행 시 자동으로 다운로드됩니다.
 
-### 의존성 추가
+## 의존성 추가
 
 ```kotlin
 dependencies {
@@ -40,7 +35,7 @@ dependencies {
 }
 ```
 
-### Kotlin 사용법
+## Kotlin 사용법
 
 ```kotlin
 val modelDir = ModelManager.ensureModels(context)
@@ -63,7 +58,7 @@ pipeline.start()
 pipeline.pushAudio(samples)
 ```
 
-### 소스에서 빌드
+## 소스에서 빌드
 
 ```bash
 git clone --recursive https://github.com/soniqo/speech-android.git
@@ -73,7 +68,10 @@ cd speech-android
 ./gradlew :sdk:connectedAndroidTest   # 34개 e2e 테스트
 ```
 
-### 데모 앱
+`./setup.sh`는 speech-core 서브모듈을 초기화하고 ONNX Runtime을
+`./ort/`로 다운로드합니다.
+
+## 데모 앱
 
 [`app/`](app/) 모듈은 최소한의 음성 비서 데모로 다음을 포함합니다:
 
@@ -87,7 +85,7 @@ cd speech-android
 ./gradlew :app:installDebug
 ```
 
-### 시스템 음성 입력(`RecognitionService`)
+## 시스템 음성 입력(`RecognitionService`)
 
 SDK는 Android 프레임워크 `SpeechRecognizer` API에 연결되는 바로 사용 가능한 `audio.soniqo.speech.service.SpeechRecognitionService`를 제공합니다 — 작성할 코드가 없습니다. 앱이 기본 음성 인식기로 선택되면, `SpeechRecognizer.createSpeechRecognizer(context)`(`ComponentName` 없이)를 호출하는 모든 타사 앱이 파이프라인을 통해 완전히 온디바이스 STT를 받을 수 있습니다.
 
@@ -143,53 +141,6 @@ Android 에뮬레이터(arm64-v8a, NNAPI 없음)에서 측정. 실제 하드웨�
 | Kokoro 82M | TTS | 1.9초 출력 | 1,075ms | 0.58 |
 | Silero VAD v5 | VAD | 32ms 청크 | <1ms | <0.01 |
 
-## 임베디드 Linux
-
-자동차 및 임베디드 플랫폼을 위한 최소한의 C API. 전체 문서는 [`linux/README.md`](linux/README.md)를 참조하세요.
-
-### C API 사용법
-
-```c
-#include <speech.h>
-
-void on_event(const speech_event_t* event, void* ctx) {
-    if (event->type == SPEECH_EVENT_TRANSCRIPTION)
-        printf("%s\n", event->text);
-}
-
-speech_config_t cfg = speech_config_default();
-cfg.model_dir = "/opt/speech/models";
-cfg.use_qnn = true;  // Hexagon DSP 가속
-
-speech_pipeline_t p = speech_create(cfg, on_event, NULL);
-speech_start(p);
-speech_push_audio(p, pcm_samples, 512);
-```
-
-### 빌드
-
-```bash
-cd linux && ./setup_linux.sh
-cmake -B build -DORT_DIR=../ort-linux
-cmake --build build
-./build/speech_demo --model-dir /path/to/models
-```
-
-### 테스트
-
-```bash
-linux/tests/download_models.sh              # ONNX 모델 다운로드
-SPEECH_MODEL_DIR=tests/models ./build/speech_test   # 12개 테스트
-```
-
-### Yocto용 크로스 컴파일
-
-```bash
-source /opt/poky/environment-setup-aarch64-poky-linux
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=toolchain-aarch64.cmake -DORT_DIR=...
-cmake --build build
-```
-
 ## 파이프라인
 
 ```text
@@ -204,41 +155,51 @@ Idle → Listening → Transcribing → Speaking → Idle
 
 ```text
 ┌──────────────────────────────────────────────┐
-│   Android: SpeechPipeline (Kotlin/JNI)       │
-│   Linux:   speech.h (C API)                  │
-└──────────────────┬───────────────────────────┘
-                   │
-┌──────────────────┴───────────────────────────┐
-│            speech-core (C++ submodule)        │
-│   Turn detection · Interruptions · Context   │
-└──┬────────┬────────┬────────┬────────────────┘
-   │        │        │        │  vtables
-┌──┴──┐  ┌──┴──┐  ┌──┴──┐  ┌─┴────────┐
-│ VAD │  │ STT │  │ TTS │  │ Enhancer │
-│Silero│  │Para-│  │Koko-│  │DeepFilter│
-│     │  │keet │  │ro   │  │Net3      │
-└──┬──┘  └──┬──┘  └──┬──┘  └─┬────────┘
-   └────────┴────────┴────────┘
-       ONNX Runtime (CPU / NNAPI / QNN)
+│      SpeechPipeline (Kotlin)                 │
+│            │                                 │
+│            ▼                                 │
+│      jni_bridge.cpp  (~250 lines)            │
+│            │                                 │
+│            ▼                                 │
+│  ┌──────────────────────────────────────┐    │
+│  │  speech_core_models (git submodule)  │    │
+│  │   SileroVad / ParakeetStt /          │    │
+│  │   KokoroTts / DeepFilterEnhancer     │    │
+│  │            │                         │    │
+│  │            ▼                         │    │
+│  │  speech_core  (orchestration:        │    │
+│  │   pipeline · turn · interruptions)   │    │
+│  └──────────────────────────────────────┘    │
+│            │                                 │
+│            ▼                                 │
+│      ONNX Runtime (CPU / NNAPI)              │
+└──────────────────────────────────────────────┘
 ```
+
+각 모델 클래스는 해당하는 speech-core 인터페이스(`VADInterface`,
+`STTInterface`, `TTSInterface`, `EnhancerInterface`)를 직접 구현합니다 —
+JNI 브리지가 이들을 인스턴스화하여 `VoicePipeline`에 참조를 전달합니다.
+C-vtable 어댑터 보일러플레이트가 없습니다.
 
 ## 하드웨어 가속
 
-| 플랫폼 | 칩셋 | 가속 |
-| --- | --- | --- |
-| Android | Snapdragon 8 Gen 1+ | NNAPI → Hexagon NPU |
-| Android | Samsung Exynos 2200+ | NNAPI → Samsung NPU |
-| Android | Google Tensor G2+ | NNAPI → Google TPU |
-| 자동차 | SA8295P / SA8255P | QNN → Hexagon DSP |
-| 모두 | CPU 폴백 | XNNPACK |
+| 칩셋 | 가속 |
+| --- | --- |
+| Snapdragon 8 Gen 1+ | NNAPI → Hexagon NPU |
+| Samsung Exynos 2200+ | NNAPI → Samsung NPU |
+| Google Tensor G2+ | NNAPI → Google TPU |
+| CPU 폴백 | XNNPACK |
+
+자동차용 Qualcomm SA8295P / SA8255P와 QNN(Hexagon DSP)은
+[speech-core/examples/linux](https://github.com/soniqo/speech-core/tree/main/examples/linux)를 참조하세요.
 
 ## 관련 프로젝트
 
-| 저장소 | 플랫폼 |
+| 저장소 | 범위 |
 | --- | --- |
 | [speech-swift](https://github.com/soniqo/speech-swift) | Apple(macOS, iOS) — MLX + CoreML |
-| [speech-core](https://github.com/soniqo/speech-core) | 크로스 플랫폼 C++ 파이프라인 엔진 |
-| **speech-android** | Android + 임베디드 Linux — ONNX Runtime |
+| [speech-core](https://github.com/soniqo/speech-core) | 크로스 플랫폼 C++ 파이프라인 엔진 + ONNX 모델 래퍼 + Linux/임베디드 예제 |
+| **speech-android** | Android 래퍼 — speech-core 위에 Kotlin SDK + JNI 브리지 |
 
 ## 라이선스
 
