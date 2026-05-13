@@ -5,12 +5,8 @@ build/
 .idea/
 local.properties
 
-# ONNX Runtime (downloaded by setup.sh / setup_linux.sh)
+# ONNX Runtime (downloaded by setup.sh)
 /ort/
-/ort-linux/
-
-# Test models (downloaded by linux/tests/download_models.sh)
-linux/tests/models/
 
 # Native build artifacts
 .cxx/
