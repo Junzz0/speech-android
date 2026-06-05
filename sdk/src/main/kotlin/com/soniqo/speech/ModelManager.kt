@@ -53,19 +53,27 @@ object ModelManager {
                 ModelFile("Parakeet-TDT-v3-ONNX", "vocab.json"),
             )
             SttModel.NEMOTRON_MULTILINGUAL -> {
-                val q = if (precision == ModelPrecision.INT8) "INT8" else "FP16"
                 val base = "Nemotron-3.5-ASR-Streaming-Multilingual-0.6B"
                 files += when (sttBackend) {
+                    // INT8 ONNX uses ConvInteger in the encoder, which the mobile
+                    // onnxruntime-android build does not implement ("Could not find
+                    // an implementation for ConvInteger"), so the ONNX backend on
+                    // Android always uses FP16 (verified on-device). For an int8
+                    // footprint on Android use the LiteRT backend (channelwise int8
+                    // via the NNAPI/XNNPACK delegate).
                     SttBackend.ONNX -> listOf("encoder.onnx", "encoder.onnx.data",
                         "decoder.onnx", "decoder.onnx.data", "joint.onnx", "joint.onnx.data",
                         "vocab.json", "languages.json", "config.json")
-                        .map { ModelFile("$base-ONNX-$q", it) }
-                    SttBackend.LITERT -> listOf(
+                        .map { ModelFile("$base-ONNX-FP16", it) }
+                    SttBackend.LITERT -> {
+                      val q = if (precision == ModelPrecision.INT8) "INT8" else "FP16"
+                      listOf(
                         "nemotron-multilingual-encoder.tflite",
                         "nemotron-multilingual-decoder.tflite",
                         "nemotron-multilingual-joint.tflite",
                         "vocab.json", "languages.json", "io_map.json", "config.json")
                         .map { ModelFile("$base-LiteRT-$q", it) }
+                    }
                 }
             }
         }
