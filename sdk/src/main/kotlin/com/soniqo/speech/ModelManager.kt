@@ -22,7 +22,7 @@ object ModelManager {
     private const val BASE_URL = "https://huggingface.co/soniqo"
 
     // Bump when models on HuggingFace are updated to trigger cache invalidation.
-    private const val MODEL_VERSION = 2
+    private const val MODEL_VERSION = 3
 
     private const val MAX_RETRIES = 5
     private const val RETRY_DELAY_MS = 2000L
@@ -34,15 +34,43 @@ object ModelManager {
         .followSslRedirects(true)
         .build()
 
-    private fun models(precision: ModelPrecision): List<ModelFile> {
+    private fun models(
+        precision: ModelPrecision,
+        sttModel: SttModel = SttModel.PARAKEET,
+        sttBackend: SttBackend = SttBackend.ONNX,
+    ): List<ModelFile> {
         val suffix = if (precision == ModelPrecision.INT8) "-int8" else ""
-        return listOf(
+        val files = mutableListOf(
             // VAD (no quantized variant — already 2 MB)
             ModelFile("Silero-VAD-v5-ONNX", "silero-vad.onnx"),
-            // STT (v3 — multilingual, 114 languages)
-            ModelFile("Parakeet-TDT-v3-ONNX", "parakeet-encoder${suffix}.onnx"),
-            ModelFile("Parakeet-TDT-v3-ONNX", "parakeet-decoder-joint${suffix}.onnx"),
-            ModelFile("Parakeet-TDT-v3-ONNX", "vocab.json"),
+        )
+
+        // STT — Parakeet (auto-detect) or Nemotron-3.5 multilingual.
+        when (sttModel) {
+            SttModel.PARAKEET -> files += listOf(
+                ModelFile("Parakeet-TDT-v3-ONNX", "parakeet-encoder${suffix}.onnx"),
+                ModelFile("Parakeet-TDT-v3-ONNX", "parakeet-decoder-joint${suffix}.onnx"),
+                ModelFile("Parakeet-TDT-v3-ONNX", "vocab.json"),
+            )
+            SttModel.NEMOTRON_MULTILINGUAL -> {
+                val q = if (precision == ModelPrecision.INT8) "INT8" else "FP16"
+                val base = "Nemotron-3.5-ASR-Streaming-Multilingual-0.6B"
+                files += when (sttBackend) {
+                    SttBackend.ONNX -> listOf("encoder.onnx", "encoder.onnx.data",
+                        "decoder.onnx", "decoder.onnx.data", "joint.onnx", "joint.onnx.data",
+                        "vocab.json", "languages.json", "config.json")
+                        .map { ModelFile("$base-ONNX-$q", it) }
+                    SttBackend.LITERT -> listOf(
+                        "nemotron-multilingual-encoder.tflite",
+                        "nemotron-multilingual-decoder.tflite",
+                        "nemotron-multilingual-joint.tflite",
+                        "vocab.json", "languages.json", "io_map.json", "config.json")
+                        .map { ModelFile("$base-LiteRT-$q", it) }
+                }
+            }
+        }
+
+        files += listOf(
             // TTS (E2E model — single file + external weights)
             ModelFile("Kokoro-82M-ONNX", "kokoro-e2e.onnx"),
             ModelFile("Kokoro-82M-ONNX", "kokoro-e2e.onnx.data"),
@@ -58,7 +86,8 @@ object ModelManager {
             // Noise cancellation
             ModelFile("DeepFilterNet3-ONNX", "deepfilter-auxiliary.bin"),
         )
-        // Note: FP32 encoder also needs parakeet-encoder.onnx.data (external weights)
+        return files
+        // Note: FP32 Parakeet encoder also needs parakeet-encoder.onnx.data.
     }
 
     data class ModelFile(val repo: String, val filename: String)
@@ -83,6 +112,8 @@ object ModelManager {
     fun areModelsReady(
         context: Context,
         precision: ModelPrecision = ModelPrecision.INT8,
+        sttModel: SttModel = SttModel.PARAKEET,
+        sttBackend: SttBackend = SttBackend.ONNX,
     ): Boolean {
         val dir = File(context.filesDir, "models")
         if (!dir.exists()) return false
@@ -91,8 +122,8 @@ object ModelManager {
         val cached = versionFile.takeIf { it.exists() }?.readText()?.trim()?.toIntOrNull() ?: 0
         if (cached < MODEL_VERSION) return false
 
-        val fileList = models(precision)
-        val allFiles = if (precision == ModelPrecision.FP32) {
+        val fileList = models(precision, sttModel, sttBackend)
+        val allFiles = if (precision == ModelPrecision.FP32 && sttModel == SttModel.PARAKEET) {
             fileList + ModelFile("Parakeet-TDT-0.6B-ONNX", "parakeet-encoder.onnx.data")
         } else {
             fileList
@@ -111,6 +142,8 @@ object ModelManager {
     suspend fun ensureModels(
         context: Context,
         precision: ModelPrecision = ModelPrecision.INT8,
+        sttModel: SttModel = SttModel.PARAKEET,
+        sttBackend: SttBackend = SttBackend.ONNX,
         onProgress: ((Progress) -> Unit)? = null,
     ): String = withContext(Dispatchers.IO) {
         val dir = File(context.filesDir, "models")
@@ -130,9 +163,9 @@ object ModelManager {
         // bytes=N- on the next attempt. Stale .tmp from an old MODEL_VERSION
         // is already wiped above.
 
-        val fileList = models(precision)
-        // FP32 encoder needs the external data file
-        val allFiles = if (precision == ModelPrecision.FP32) {
+        val fileList = models(precision, sttModel, sttBackend)
+        // FP32 Parakeet encoder needs the external data file.
+        val allFiles = if (precision == ModelPrecision.FP32 && sttModel == SttModel.PARAKEET) {
             fileList + ModelFile("Parakeet-TDT-0.6B-ONNX", "parakeet-encoder.onnx.data")
         } else {
             fileList

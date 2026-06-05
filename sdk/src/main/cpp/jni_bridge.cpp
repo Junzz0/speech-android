@@ -5,7 +5,12 @@
 #include <speech_core/models/kokoro_tts.h>
 #include <speech_core/models/onnx_engine.h>
 #include <speech_core/models/parakeet_stt.h>
+#include <speech_core/models/nemotron_multilingual_stt.h>
 #include <speech_core/models/silero_vad.h>
+#ifdef SPEECH_ANDROID_WITH_LITERT
+#include <speech_core/models/litert_nemotron_multilingual_stt.h>
+#endif
+#include <speech_core/interfaces.h>
 #include <speech_core/pipeline/agent_config.h>
 #include <speech_core/pipeline/voice_pipeline.h>
 
@@ -29,7 +34,7 @@
 
 struct PipelineHandle {
     std::unique_ptr<speech_core::SileroVad> vad;
-    std::unique_ptr<speech_core::ParakeetStt> stt;
+    std::unique_ptr<speech_core::STTInterface> stt;  // Parakeet or Nemotron (ONNX/LiteRT)
     std::unique_ptr<speech_core::KokoroTts> tts;
     std::unique_ptr<speech_core::DeepFilterEnhancer> enhancer;
     std::unique_ptr<speech_core::VoicePipeline> pipeline;
@@ -137,12 +142,16 @@ JNIEXPORT jlong JNICALL
 Java_audio_soniqo_speech_NativeBridge_nativeCreate(
     JNIEnv* env, jobject /*thiz*/,
     jstring modelDir, jboolean useNnapi, jboolean useInt8,
+    jint sttModel, jint sttBackend, jstring language,
     jobject callback,
     jboolean emitPartialTranscriptions, jfloat partialTranscriptionInterval)
 {
     auto dir = jstring_to_string(env, modelDir);
     bool nnapi = useNnapi;
     std::string suffix = useInt8 ? "-int8" : "";
+    std::string lang = jstring_to_string(env, language);
+    enum { STT_PARAKEET = 0, STT_NEMOTRON_MULTILINGUAL = 1 };
+    enum { BACKEND_ONNX = 0, BACKEND_LITERT = 1 };
 
     auto h = std::make_unique<PipelineHandle>();
     env->GetJavaVM(&h->jvm);
@@ -157,11 +166,35 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
         // Load models
         h->vad = std::make_unique<speech_core::SileroVad>(
             dir + "/silero-vad.onnx", /*hw_accel=*/false);
-        h->stt = std::make_unique<speech_core::ParakeetStt>(
-            dir + "/parakeet-encoder" + suffix + ".onnx",
-            dir + "/parakeet-decoder-joint" + suffix + ".onnx",
-            dir + "/vocab.json",
-            nnapi);
+        // STT — Parakeet (auto-detect) or Nemotron-3.5 multilingual
+        // (prompt-conditioned) on the ONNX or LiteRT backend.
+        if (sttModel == STT_NEMOTRON_MULTILINGUAL) {
+            if (sttBackend == BACKEND_LITERT) {
+#ifdef SPEECH_ANDROID_WITH_LITERT
+                auto m = std::make_unique<speech_core::LiteRTNemotronMultilingualStt>(
+                    dir + "/nemotron-multilingual-encoder.tflite",
+                    dir + "/nemotron-multilingual-decoder.tflite",
+                    dir + "/nemotron-multilingual-joint.tflite",
+                    dir + "/vocab.json", dir + "/languages.json", nnapi);
+                if (lang != "auto" && !lang.empty()) m->set_language(lang);
+                h->stt = std::move(m);
+#else
+                throw std::runtime_error("LiteRT STT backend not built into this SDK");
+#endif
+            } else {
+                auto m = std::make_unique<speech_core::NemotronMultilingualStt>(
+                    dir + "/encoder.onnx", dir + "/decoder.onnx", dir + "/joint.onnx",
+                    dir + "/vocab.json", dir + "/languages.json", nnapi);
+                if (lang != "auto" && !lang.empty()) m->set_language(lang);
+                h->stt = std::move(m);
+            }
+        } else {
+            h->stt = std::make_unique<speech_core::ParakeetStt>(
+                dir + "/parakeet-encoder" + suffix + ".onnx",
+                dir + "/parakeet-decoder-joint" + suffix + ".onnx",
+                dir + "/vocab.json",
+                nnapi);
+        }
         h->tts = std::make_unique<speech_core::KokoroTts>(
             dir + "/kokoro-e2e.onnx",
             dir + "/voices",

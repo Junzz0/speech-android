@@ -26,6 +26,15 @@ set(SPEECH_CORE_WITH_ONNX     ON  CACHE BOOL "" FORCE)
 set(SPEECH_CORE_BUILD_TESTS   OFF CACHE BOOL "" FORCE)
 set(SPEECH_CORE_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 
+# LiteRT backend (optional) — enables the Nemotron multilingual LiteRT path.
+# Active when LITERT_DIR holds libLiteRt.so per ABI (fetched by setup.sh).
+# speech-core's CMake builds the speech_core_models_litert target from it.
+set(_SPEECH_ANDROID_LITERT OFF)
+if(DEFINED LITERT_DIR AND EXISTS "${LITERT_DIR}/${ANDROID_ABI}/libLiteRt.so")
+    set(SPEECH_CORE_WITH_LITERT ON CACHE BOOL "" FORCE)
+    set(_SPEECH_ANDROID_LITERT ON)
+endif()
+
 add_subdirectory(${SPEECH_CORE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/speech_core)
 
 # ---------------------------------------------------------------------------
@@ -44,3 +53,8 @@ target_link_libraries(speech_android
         android
         log
 )
+
+if(_SPEECH_ANDROID_LITERT)
+    target_compile_definitions(speech_android PRIVATE SPEECH_ANDROID_WITH_LITERT)
+    target_link_libraries(speech_android PRIVATE speech_core_models_litert)
+endif()

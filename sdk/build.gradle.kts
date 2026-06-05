@@ -19,8 +19,12 @@ android {
                     "-DANDROID_STL=c++_shared",
                     "-DSPEECH_CORE_DIR=${project.rootDir}/speech-core",
                     "-DORT_DIR=${project.rootDir}/ort",
+                    // LiteRT runtime (fetched by setup.sh into /litert/<abi>/);
+                    // enables the Nemotron multilingual LiteRT backend.
+                    "-DLITERT_DIR=${project.rootDir}/litert",
                 )
-                abiFilters += listOf("arm64-v8a")
+                // arm64-v8a for devices; x86_64 for emulators.
+                abiFilters += listOf("arm64-v8a", "x86_64")
             }
         }
     }

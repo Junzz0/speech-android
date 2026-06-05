@@ -10,6 +10,9 @@ internal object NativeBridge {
         modelDir: String,
         useNnapi: Boolean,
         useInt8: Boolean,
+        sttModel: Int,    // SttModel.ordinal: 0=PARAKEET, 1=NEMOTRON_MULTILINGUAL
+        sttBackend: Int,  // SttBackend.ordinal: 0=ONNX, 1=LITERT
+        language: String, // prompt locale for Nemotron ("auto", "en-US", ...)
         callback: EventCallback,
         emitPartialTranscriptions: Boolean,
         partialTranscriptionInterval: Float,

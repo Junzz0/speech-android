@@ -8,9 +8,16 @@ local.properties
 # ONNX Runtime (downloaded by setup.sh)
 /ort/
 
+# LiteRT runtime (downloaded by setup.sh)
+/litert/
+
 # Native build artifacts
 .cxx/
 .externalNativeBuild/
+
+# Python virtualenvs
+.venv/
+venv/
 
 # macOS
 .DS_Store
