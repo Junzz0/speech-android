@@ -20,8 +20,16 @@ This repo is the **Android packaging**: Kotlin SDK, JNI bridge, demo app. The C+
 | [Kokoro 82M](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | Text-to-speech | 330 MB | 8 (en, fr, es, it, pt, hi, ja, zh) |
 | [Silero VAD v5](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | Voice activity detection | 2 MB | Any |
 | [DeepFilterNet3](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | Noise cancellation | ~8 MB | Any |
+| [FunctionGemma 270M](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | On-device LLM — structured function / tool calls | 283 MB | EN-tuned |
 
 Models are downloaded automatically on first launch via `ModelManager.ensureModels()`.
+
+**FunctionGemma 270M** is a Gemma 3 derivative trained for structured tool
+calls. The Kotlin wrapper (`audio.soniqo.speech.llm.FunctionGemma`) is a
+runtime-agnostic shell: bring your own LiteRT-LM runtime adapter (see the
+[Kotlin usage](#kotlin-usage) section) and the SDK handles prompt
+formatting and call parsing. The model bundle ships as a single 283 MB
+`.litertlm` file.
 
 ## Try the demo
 
@@ -57,6 +65,48 @@ pipeline.start()
 // Feed 16kHz mono float32 PCM from microphone
 pipeline.pushAudio(samples)
 ```
+
+### FunctionGemma 270M (on-device tool-calling LLM)
+
+The SDK ships the prompt formatter (`FunctionGemmaPrompt`), parser
+(`FunctionGemmaParser`) and a small façade (`FunctionGemma`). You bring
+the LiteRT-LM runtime — e.g. the `com.google.ai.edge.litert:litert-lm-runtime`
+Maven artifact — and adapt it to the one-method `FunctionGemma.Runtime`
+interface so the SDK stays free of that transitive dependency.
+
+```kotlin
+import audio.soniqo.speech.llm.*
+
+val runtime = object : FunctionGemma.Runtime {
+    private val engine = /* load model.litertlm via your chosen runtime */
+    override fun generate(prompt: String, maxNewTokens: Int): String =
+        engine.generateResponse(prompt, maxNewTokens)
+    override fun cancel() { engine.cancel() }
+}
+
+val llm = FunctionGemma(runtime)
+
+val tools = listOf(
+    FunctionDeclaration(
+        name = "get_weather",
+        description = "Get current weather",
+        parameters = mapOf(
+            "type" to "object",
+            "properties" to mapOf(
+                "location" to mapOf("type" to "string"),
+            ),
+        ),
+    ),
+)
+
+val rawResponse = llm.generateToolCall("What's the weather in Tokyo?", tools)
+val calls = llm.parseToolCalls(rawResponse)
+// -> [FunctionCall(name="get_weather",
+//                  arguments={"location": ArgumentValue.Str("Tokyo")})]
+```
+
+The model bundle (`model.litertlm`, 283 MB) is published at
+[soniqo/FunctionGemma-270M-LiteRT-LM](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM).
 
 ## Build from source
 
