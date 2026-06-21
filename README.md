@@ -18,11 +18,17 @@ This repo is the **Android packaging**: Kotlin SDK, JNI bridge, demo app. The C+
 | --- | --- | --- | --- |
 | [Parakeet TDT v3](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | Speech recognition | 891 MB | 114 |
 | [Kokoro 82M](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | Text-to-speech | 330 MB | 8 (en, fr, es, it, pt, hi, ja, zh) |
+| [Supertonic-3](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | Text-to-speech (LiteRT, flow-matching, G2P-free, 44.1 kHz) | ~380 MB | 31 |
 | [Silero VAD v5](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | Voice activity detection | 2 MB | Any |
 | [DeepFilterNet3](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | Noise cancellation | ~8 MB | Any |
 | [FunctionGemma 270M](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | On-device LLM — structured function / tool calls | 283 MB | EN-tuned |
 
 Models are downloaded automatically on first launch via `ModelManager.ensureModels()`.
+
+**Supertonic-3** is an opt-in higher-quality multilingual TTS — select it with
+`SpeechConfig(ttsModel = TtsModel.SUPERTONIC)` (requires the LiteRT backend). The host runs its four
+non-autoregressive flow-matching graphs on-device at 44.1 kHz; the front-end is G2P-free (NFKD +
+Unicode index — no phonemizer), so all 31 languages go through one path.
 
 **FunctionGemma 270M** is a Gemma 3 derivative trained for structured tool
 calls. The Kotlin wrapper (`audio.soniqo.speech.llm.FunctionGemma`) is a

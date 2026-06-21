@@ -18,10 +18,13 @@
 | --- | --- | --- | --- |
 | [Parakeet TDT v3](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | 音声認識 | 891 MB | 114 |
 | [Kokoro 82M](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | テキスト読み上げ | 330 MB | 8(en、fr、es、it、pt、hi、ja、zh) |
+| [Supertonic-3](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | テキスト読み上げ(LiteRT、flow-matching、G2P-free、44.1 kHz) | ~380 MB | 31 |
 | [Silero VAD v5](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | 音声活動検出 | 2 MB | 任意 |
 | [DeepFilterNet3](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | ノイズキャンセリング | ~8 MB | 任意 |
 
 モデルは初回起動時に `ModelManager.ensureModels()` 経由で自動ダウンロードされます。
+
+**Supertonic-3** はオプトインの高品質な多言語 TTS です — `SpeechConfig(ttsModel = TtsModel.SUPERTONIC)` で選択します(LiteRT バックエンドが必要)。ホストはその 4 つの非自己回帰 flow-matching グラフを 44.1 kHz でオンデバイス実行します。フロントエンドは G2P-free(NFKD + Unicode インデックス — phonemizer なし)なので、31 言語すべてが単一のパスを通ります。
 
 ## デモを試す
 

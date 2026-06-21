@@ -18,10 +18,13 @@
 | --- | --- | --- | --- |
 | [Parakeet TDT v3](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | Распознавание речи | 891 МБ | 114 |
 | [Kokoro 82M](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | Синтез речи | 330 МБ | 8 (en, fr, es, it, pt, hi, ja, zh) |
+| [Supertonic-3](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | Синтез речи (LiteRT, flow-matching, G2P-free, 44,1 кГц) | ~380 МБ | 31 |
 | [Silero VAD v5](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | Определение голосовой активности | 2 МБ | Любой |
 | [DeepFilterNet3](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | Шумоподавление | ~8 МБ | Любой |
 
 Модели загружаются автоматически при первом запуске через `ModelManager.ensureModels()`.
+
+**Supertonic-3** — это опциональный многоязычный TTS повышенного качества: выберите его через `SpeechConfig(ttsModel = TtsModel.SUPERTONIC)` (требуется бэкенд LiteRT). Хост выполняет его четыре неавторегрессионных flow-matching-графа на устройстве на частоте 44,1 кГц; фронтенд работает G2P-free (NFKD + индекс Unicode — без фонемизатора), поэтому все 31 язык проходят через один путь.
 
 ## Попробовать демо
 
