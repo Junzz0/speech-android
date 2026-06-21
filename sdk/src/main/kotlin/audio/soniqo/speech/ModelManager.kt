@@ -42,6 +42,7 @@ object ModelManager {
         precision: ModelPrecision,
         sttModel: SttModel = SttModel.PARAKEET,
         sttBackend: SttBackend = SttBackend.ONNX,
+        ttsModel: TtsModel = TtsModel.KOKORO,
     ): List<ModelFile> {
         val suffix = if (precision == ModelPrecision.INT8) "-int8" else ""
         val files = mutableListOf(
@@ -90,22 +91,36 @@ object ModelManager {
             }
         }
 
-        files += listOf(
-            // TTS (E2E model — single file + external weights)
-            ModelFile("Kokoro-82M-ONNX", "kokoro-e2e.onnx"),
-            ModelFile("Kokoro-82M-ONNX", "kokoro-e2e.onnx.data"),
-            ModelFile("Kokoro-82M-ONNX", "vocab_index.json"),
-            ModelFile("Kokoro-82M-ONNX", "us_gold.json"),
-            ModelFile("Kokoro-82M-ONNX", "us_silver.json"),
-            ModelFile("Kokoro-82M-ONNX", "dict_fr.json"),
-            ModelFile("Kokoro-82M-ONNX", "dict_es.json"),
-            ModelFile("Kokoro-82M-ONNX", "dict_it.json"),
-            ModelFile("Kokoro-82M-ONNX", "dict_pt.json"),
-            ModelFile("Kokoro-82M-ONNX", "dict_hi.json"),
-            ModelFile("Kokoro-82M-ONNX", "voices/af_heart.bin"),
-            // Noise cancellation
-            ModelFile("DeepFilterNet3-ONNX", "deepfilter-auxiliary.bin"),
-        )
+        // TTS — Kokoro (ONNX E2E, 24 kHz) or Supertonic-3 (LiteRT flow-matching, 44.1 kHz, G2P-free).
+        when (ttsModel) {
+            TtsModel.KOKORO -> files += listOf(
+                // E2E model — single file + external weights
+                ModelFile("Kokoro-82M-ONNX", "kokoro-e2e.onnx"),
+                ModelFile("Kokoro-82M-ONNX", "kokoro-e2e.onnx.data"),
+                ModelFile("Kokoro-82M-ONNX", "vocab_index.json"),
+                ModelFile("Kokoro-82M-ONNX", "us_gold.json"),
+                ModelFile("Kokoro-82M-ONNX", "us_silver.json"),
+                ModelFile("Kokoro-82M-ONNX", "dict_fr.json"),
+                ModelFile("Kokoro-82M-ONNX", "dict_es.json"),
+                ModelFile("Kokoro-82M-ONNX", "dict_it.json"),
+                ModelFile("Kokoro-82M-ONNX", "dict_pt.json"),
+                ModelFile("Kokoro-82M-ONNX", "dict_hi.json"),
+                ModelFile("Kokoro-82M-ONNX", "voices/af_heart.bin"),
+            )
+            // Four LiteRT graphs + the G2P-free tokenizer assets + the 10-voice catalog.
+            TtsModel.SUPERTONIC -> files += listOf(
+                "duration_predictor.tflite", "text_encoder.tflite",
+                "vector_estimator.tflite", "vocoder.tflite",
+                "tts.json", "unicode_indexer.json",
+                "voice_styles/F1.json", "voice_styles/F2.json", "voice_styles/F3.json",
+                "voice_styles/F4.json", "voice_styles/F5.json",
+                "voice_styles/M1.json", "voice_styles/M2.json", "voice_styles/M3.json",
+                "voice_styles/M4.json", "voice_styles/M5.json",
+            ).map { ModelFile("Supertonic-3-LiteRT", it) }
+        }
+
+        // Noise cancellation
+        files += ModelFile("DeepFilterNet3-ONNX", "deepfilter-auxiliary.bin")
         return files
         // Note: FP32 Parakeet encoder also needs parakeet-encoder.onnx.data.
     }
@@ -141,6 +156,7 @@ object ModelManager {
         precision: ModelPrecision = ModelPrecision.INT8,
         sttModel: SttModel = SttModel.PARAKEET,
         sttBackend: SttBackend = SttBackend.ONNX,
+        ttsModel: TtsModel = TtsModel.KOKORO,
     ): Boolean {
         val dir = File(context.filesDir, "models")
         if (!dir.exists()) return false
@@ -149,7 +165,7 @@ object ModelManager {
         val cached = versionFile.takeIf { it.exists() }?.readText()?.trim()?.toIntOrNull() ?: 0
         if (cached < MODEL_VERSION) return false
 
-        val fileList = models(precision, sttModel, sttBackend)
+        val fileList = models(precision, sttModel, sttBackend, ttsModel)
         val allFiles = if (precision == ModelPrecision.FP32 && sttModel == SttModel.PARAKEET) {
             fileList + ModelFile("Parakeet-TDT-0.6B-ONNX", "parakeet-encoder.onnx.data")
         } else {
@@ -171,6 +187,7 @@ object ModelManager {
         precision: ModelPrecision = ModelPrecision.INT8,
         sttModel: SttModel = SttModel.PARAKEET,
         sttBackend: SttBackend = SttBackend.ONNX,
+        ttsModel: TtsModel = TtsModel.KOKORO,
         onProgress: ((Progress) -> Unit)? = null,
     ): String = withContext(Dispatchers.IO) {
         val dir = File(context.filesDir, "models")
@@ -190,7 +207,7 @@ object ModelManager {
         // bytes=N- on the next attempt. Stale .tmp from an old MODEL_VERSION
         // is already wiped above.
 
-        val fileList = models(precision, sttModel, sttBackend)
+        val fileList = models(precision, sttModel, sttBackend, ttsModel)
         // FP32 Parakeet encoder needs the external data file.
         val allFiles = if (precision == ModelPrecision.FP32 && sttModel == SttModel.PARAKEET) {
             fileList + ModelFile("Parakeet-TDT-0.6B-ONNX", "parakeet-encoder.onnx.data")

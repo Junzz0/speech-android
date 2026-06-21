@@ -18,10 +18,13 @@ Dieses Repo ist das **Android-Packaging**: Kotlin-SDK, JNI-Bridge, Demo-App. Die
 | --- | --- | --- | --- |
 | [Parakeet TDT v3](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | Spracherkennung | 891 MB | 114 |
 | [Kokoro 82M](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | Text-to-Speech | 330 MB | 8 (en, fr, es, it, pt, hi, ja, zh) |
+| [Supertonic-3](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | Text-to-Speech (LiteRT, Flow-Matching, G2P-frei, 44,1 kHz) | ~380 MB | 31 |
 | [Silero VAD v5](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | Sprachaktivitätserkennung | 2 MB | Beliebig |
 | [DeepFilterNet3](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | Rauschunterdrückung | ~8 MB | Beliebig |
 
 Modelle werden beim ersten Start automatisch über `ModelManager.ensureModels()` heruntergeladen.
+
+**Supertonic-3** ist ein optionales, höherwertiges mehrsprachiges TTS — wähle es mit `SpeechConfig(ttsModel = TtsModel.SUPERTONIC)` aus (erfordert das LiteRT-Backend). Der Host führt seine vier nicht-autoregressiven Flow-Matching-Graphen mit 44,1 kHz auf dem Gerät aus; das Front-End ist G2P-frei (NFKD + Unicode-Index — kein Phonemizer), sodass alle 31 Sprachen über einen einzigen Pfad laufen.
 
 ## Demo ausprobieren
 

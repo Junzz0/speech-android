@@ -18,10 +18,13 @@
 | --- | --- | --- | --- |
 | [Parakeet TDT v3](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | 语音识别 | 891 MB | 114 |
 | [Kokoro 82M](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | 文本转语音 | 330 MB | 8(en、fr、es、it、pt、hi、ja、zh) |
+| [Supertonic-3](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 文本转语音(LiteRT、流匹配、免 G2P、44.1 kHz) | ~380 MB | 31 |
 | [Silero VAD v5](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | 语音活动检测 | 2 MB | 任意 |
 | [DeepFilterNet3](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | 噪声消除 | ~8 MB | 任意 |
 
 模型在首次启动时通过 `ModelManager.ensureModels()` 自动下载。
+
+**Supertonic-3** 是可选启用的更高质量多语言 TTS — 通过 `SpeechConfig(ttsModel = TtsModel.SUPERTONIC)` 选用(需要 LiteRT 后端)。宿主在设备端以 44.1 kHz 运行其四个非自回归流匹配图;前端免 G2P(NFKD + Unicode 索引 — 无音素转换器),因此全部 31 种语言走同一条路径。
 
 ## 试用演示
 

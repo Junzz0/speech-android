@@ -18,10 +18,13 @@ Android के लिए ऑन-डिवाइस स्पीच SDK, [ONNX Ru
 | --- | --- | --- | --- |
 | [Parakeet TDT v3](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | स्पीच रिकग्निशन | 891 MB | 114 |
 | [Kokoro 82M](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | टेक्स्ट-टू-स्पीच | 330 MB | 8 (en, fr, es, it, pt, hi, ja, zh) |
+| [Supertonic-3](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | टेक्स्ट-टू-स्पीच (LiteRT, फ़्लो-मैचिंग, G2P-free, 44.1 kHz) | ~380 MB | 31 |
 | [Silero VAD v5](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | वॉयस एक्टिविटी डिटेक्शन | 2 MB | कोई भी |
 | [DeepFilterNet3](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | शोर रद्दीकरण | ~8 MB | कोई भी |
 
 मॉडल पहले लॉन्च पर `ModelManager.ensureModels()` के माध्यम से स्वचालित रूप से डाउनलोड होते हैं।
+
+**Supertonic-3** एक ऑप्ट-इन उच्च-गुणवत्ता वाला बहुभाषी TTS है — इसे `SpeechConfig(ttsModel = TtsModel.SUPERTONIC)` के साथ चुनें (LiteRT बैकएंड आवश्यक)। होस्ट इसके चार नॉन-ऑटोरिग्रेसिव फ़्लो-मैचिंग ग्राफ़ ऑन-डिवाइस 44.1 kHz पर चलाता है; फ़्रंट-एंड G2P-free है (NFKD + Unicode इंडेक्स — कोई फ़ोनेमाइज़र नहीं), इसलिए सभी 31 भाषाएँ एक ही पथ से होकर गुजरती हैं।
 
 ## डेमो आज़माएँ
 

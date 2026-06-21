@@ -9,6 +9,7 @@
 #include <speech_core/models/silero_vad.h>
 #ifdef SPEECH_ANDROID_WITH_LITERT
 #include <speech_core/models/litert_nemotron_multilingual_stt.h>
+#include <speech_core/models/litert_supertonic_tts.h>
 #endif
 #include <speech_core/interfaces.h>
 #include <speech_core/pipeline/agent_config.h>
@@ -35,7 +36,7 @@
 struct PipelineHandle {
     std::unique_ptr<speech_core::SileroVad> vad;
     std::unique_ptr<speech_core::STTInterface> stt;  // Parakeet or Nemotron (ONNX/LiteRT)
-    std::unique_ptr<speech_core::KokoroTts> tts;
+    std::unique_ptr<speech_core::TTSInterface> tts;  // Kokoro (ONNX) or Supertonic (LiteRT)
     std::unique_ptr<speech_core::DeepFilterEnhancer> enhancer;
     std::unique_ptr<speech_core::VoicePipeline> pipeline;
 
@@ -142,7 +143,7 @@ JNIEXPORT jlong JNICALL
 Java_audio_soniqo_speech_NativeBridge_nativeCreate(
     JNIEnv* env, jobject /*thiz*/,
     jstring modelDir, jboolean useNnapi, jboolean useInt8,
-    jint sttModel, jint sttBackend, jstring language,
+    jint sttModel, jint sttBackend, jint ttsModel, jstring language,
     jobject callback,
     jboolean emitPartialTranscriptions, jfloat partialTranscriptionInterval)
 {
@@ -195,11 +196,30 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
                 dir + "/vocab.json",
                 nnapi);
         }
-        h->tts = std::make_unique<speech_core::KokoroTts>(
-            dir + "/kokoro-e2e.onnx",
-            dir + "/voices",
-            dir,
-            nnapi);
+        // TTS — Kokoro (ONNX, 24 kHz) or Supertonic-3 (LiteRT flow-matching, 44.1 kHz, G2P-free).
+        enum { TTS_KOKORO = 0, TTS_SUPERTONIC = 1 };
+        if (ttsModel == TTS_SUPERTONIC) {
+#ifdef SPEECH_ANDROID_WITH_LITERT
+            // Assets from soniqo/Supertonic-3-LiteRT: the four graphs + the G2P-free tokenizer
+            // (unicode_indexer.json + tts.json in modelDir) + voice_styles/.
+            h->tts = std::make_unique<speech_core::LiteRTSupertonicTts>(
+                dir + "/duration_predictor.tflite",
+                dir + "/text_encoder.tflite",
+                dir + "/vector_estimator.tflite",
+                dir + "/vocoder.tflite",
+                dir,
+                dir + "/voice_styles",
+                nnapi);
+#else
+            throw std::runtime_error("Supertonic TTS requires the LiteRT backend (not built into this SDK)");
+#endif
+        } else {
+            h->tts = std::make_unique<speech_core::KokoroTts>(
+                dir + "/kokoro-e2e.onnx",
+                dir + "/voices",
+                dir,
+                nnapi);
+        }
 
         speech_core::AgentConfig cfg;
         cfg.vad.min_silence_duration = 0.5f;

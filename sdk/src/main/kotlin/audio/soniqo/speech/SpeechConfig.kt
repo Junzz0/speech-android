@@ -10,6 +10,11 @@ enum class SttModel { PARAKEET, NEMOTRON_MULTILINGUAL }
  *  ships both; Parakeet is ONNX-only. */
 enum class SttBackend { ONNX, LITERT }
 
+/** On-device TTS model. KOKORO (ONNX, 24 kHz) is the default; SUPERTONIC is a
+ *  LiteRT non-autoregressive flow-matching model (Supertonic-3, 44.1 kHz, 31
+ *  languages, G2P-free) — requires the LiteRT backend to be built into the SDK. */
+enum class TtsModel { KOKORO, SUPERTONIC }
+
 data class SpeechConfig(
     /** Path to directory containing ONNX model files. */
     val modelDir: String = "",
@@ -22,6 +27,9 @@ data class SpeechConfig(
 
     /** STT inference backend (Nemotron multilingual supports both). */
     val sttBackend: SttBackend = SttBackend.ONNX,
+
+    /** Which TTS model to load. SUPERTONIC requires the LiteRT backend. */
+    val ttsModel: TtsModel = TtsModel.KOKORO,
 
     /** Language/locale prompt for prompt-conditioned models (Nemotron):
      *  a key from languages.json, e.g. "en-US", "fr", "ja-JP". "auto" lets
