@@ -15,7 +15,7 @@ Linux/automotive support moved to [speech-core's `examples/linux/`](https://gith
 
 - `speech-core/` — git submodule (do not modify directly; open PRs against soniqo/speech-core)
 - `sdk/src/main/cpp/` — `jni_bridge.cpp` + `CMakeLists.txt`. That's it. All model code lives in speech-core.
-- `sdk/src/main/kotlin/com/soniqo/speech/` — Kotlin public SDK
+- `sdk/src/main/kotlin/audio/soniqo/speech/` — Kotlin public SDK
 - `sdk/src/androidTest/` — instrumented e2e tests
 - `app/` — demo application
 - `setup.sh` — downloads ONNX Runtime, initializes the speech-core submodule
@@ -77,9 +77,9 @@ for the full model-file inventory.
 
 - `sdk/src/main/cpp/jni_bridge.cpp` — constructs `speech_core::SileroVad`/`ParakeetStt`/`KokoroTts` and feeds them to `speech_core::VoicePipeline`. No vtable adapters — the model wrappers implement the interfaces directly.
 - `sdk/src/main/cpp/CMakeLists.txt` — pulls speech-core in via `add_subdirectory` with `SPEECH_CORE_WITH_ONNX=ON`; the speech_core_models target provides every model wrapper.
-- `sdk/src/main/kotlin/com/soniqo/speech/SpeechPipeline.kt` — main public Kotlin API.
-- `sdk/src/main/kotlin/com/soniqo/speech/NativeBridge.kt` — JNI surface (must stay in lockstep with `jni_bridge.cpp`).
-- `sdk/src/main/kotlin/com/soniqo/speech/ModelManager.kt` — model download + caching.
+- `sdk/src/main/kotlin/audio/soniqo/speech/SpeechPipeline.kt` — main public Kotlin API.
+- `sdk/src/main/kotlin/audio/soniqo/speech/NativeBridge.kt` — JNI surface (must stay in lockstep with `jni_bridge.cpp`).
+- `sdk/src/main/kotlin/audio/soniqo/speech/ModelManager.kt` — model download + caching.
 
 Native code that used to live here (`models/*.{cpp,h}`, `audio/{fft,mel,stft}.cpp`,
 `util/json.h`, `onnx_engine.h`) is now under speech-core. Modify it via a
