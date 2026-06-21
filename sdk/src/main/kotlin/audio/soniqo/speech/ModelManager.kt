@@ -22,7 +22,11 @@ object ModelManager {
     private const val BASE_URL = "https://huggingface.co/soniqo"
 
     // Bump when models on HuggingFace are updated to trigger cache invalidation.
-    private const val MODEL_VERSION = 3
+    // v5: Parakeet-TDT-v3-ONNX decoder-joint re-exported to INT32 inputs named
+    // `targets`/`target_length` (was INT64 `prednet_lengths_orig`) to match
+    // speech-core. Filenames are unchanged, so this bump evicts both the old
+    // INT64 v3 decoder and the interim English-only 0.6B set.
+    private const val MODEL_VERSION = 5
 
     private const val MAX_RETRIES = 5
     private const val RETRY_DELAY_MS = 2000L
@@ -47,6 +51,14 @@ object ModelManager {
 
         // STT — Parakeet (auto-detect) or Nemotron-3.5 multilingual.
         when (sttModel) {
+            // Parakeet-TDT-v3-ONNX is the multilingual export (8192-token vocab
+            // with Cyrillic/Greek/accented Latin) — required for non-English STT.
+            // Its INT8 decoder-joint was re-exported so `targets`/`target_length`
+            // are INT32 (was INT64) and the length input is named `target_length`
+            // (was `prednet_lengths_orig`), matching speech-core's
+            // ParakeetStt::tdt_decode. (The Parakeet-TDT-0.6B-ONNX export is
+            // English-only — speaking e.g. Russian transliterates to Latin — so
+            // it must not be used for the default STT.)
             SttModel.PARAKEET -> files += listOf(
                 ModelFile("Parakeet-TDT-v3-ONNX", "parakeet-encoder${suffix}.onnx"),
                 ModelFile("Parakeet-TDT-v3-ONNX", "parakeet-decoder-joint${suffix}.onnx"),
@@ -103,9 +115,16 @@ object ModelManager {
     data class Progress(
         val file: String,
         val bytesDownloaded: Long,
+        /** Total size of the file currently downloading, or 0 if unknown. */
+        val fileTotalBytes: Long,
         val totalFiles: Int,
         val completed: Int,
     )
+
+    // Report intra-file byte progress at most this often. Without throttling,
+    // downloadFile's 64 KB read loop fires the callback ~13k times for the
+    // ~840 MB encoder, flooding WorkManager's setProgress/setForeground.
+    private const val PROGRESS_REPORT_INTERVAL_BYTES = 1_000_000L
 
     /**
      * True iff every required model file for [precision] is already on disk
@@ -194,8 +213,8 @@ object ModelManager {
             dest.parentFile?.mkdirs()
 
             val url = "$BASE_URL/${model.repo}/resolve/main/${model.filename}"
-            downloadFile(url, dest) { bytes ->
-                onProgress?.invoke(Progress(model.filename, bytes, allFiles.size, completed))
+            downloadFile(url, dest) { bytes, fileTotal ->
+                onProgress?.invoke(Progress(model.filename, bytes, fileTotal, allFiles.size, completed))
             }
             completed++
         }
@@ -207,7 +226,7 @@ object ModelManager {
         dir.absolutePath
     }
 
-    private fun downloadFile(url: String, dest: File, onBytes: (Long) -> Unit) {
+    private fun downloadFile(url: String, dest: File, onBytes: (downloaded: Long, fileTotal: Long) -> Unit) {
         val tmp = File(dest.parentFile, "${dest.name}.tmp")
 
         var lastException: IOException? = null
@@ -241,17 +260,34 @@ object ModelManager {
                 val contentLength = body.contentLength()
                 val isResume = response.code == 206
 
+                // Full file size: on a 206 resume, contentLength is only the
+                // remaining range, so add what's already on disk. 0 means the
+                // server didn't advertise a length (progress stays file-count
+                // based for this file).
+                val fileTotal = when {
+                    contentLength <= 0 -> 0L
+                    isResume -> existingBytes + contentLength
+                    else -> contentLength
+                }
+
                 FileOutputStream(tmp, isResume).use { output ->
                     body.byteStream().use { input ->
                         val buf = ByteArray(65536)
                         var total = if (isResume) existingBytes else 0L
+                        var lastReported = -1L
+                        onBytes(total, fileTotal)
                         while (true) {
                             val n = input.read(buf)
                             if (n == -1) break
                             output.write(buf, 0, n)
                             total += n
-                            onBytes(total)
+                            // Throttle: only surface progress every ~1 MB.
+                            if (lastReported < 0 || total - lastReported >= PROGRESS_REPORT_INTERVAL_BYTES) {
+                                onBytes(total, fileTotal)
+                                lastReported = total
+                            }
                         }
+                        onBytes(total, fileTotal)
                     }
                 }
 
