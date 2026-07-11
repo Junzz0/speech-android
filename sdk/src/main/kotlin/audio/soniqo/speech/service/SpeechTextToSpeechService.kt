@@ -104,7 +104,10 @@ open class SpeechTextToSpeechService : TextToSpeechService() {
     }
 
     protected open suspend fun resolveModelDir(): String =
-        ModelManager.ensureTtsModels(applicationContext, TtsModel.KOKORO)
+        ModelManager.ensureTtsModels(
+            applicationContext,
+            TtsModel.KOKORO_SHORT_TURN,
+        )
 
     protected open fun createSynthesizer(config: SpeechSynthesizerConfig): SpeechSynthesizer =
         SpeechSynthesizer(config)
@@ -119,8 +122,8 @@ open class SpeechTextToSpeechService : TextToSpeechService() {
             synthesizer ?: createSynthesizer(
                 SpeechSynthesizerConfig(
                     modelDir = modelDir,
-                    useNnapi = true,
-                    ttsModel = TtsModel.KOKORO,
+                    useNnapi = false,
+                    ttsModel = TtsModel.KOKORO_SHORT_TURN,
                 )
             ).also { synthesizer = it }
         }

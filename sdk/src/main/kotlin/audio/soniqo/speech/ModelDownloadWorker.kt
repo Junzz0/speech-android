@@ -68,7 +68,7 @@ class ModelDownloadWorker(
             ?: SttBackend.ONNX
         val ttsModel = inputData.getString(KEY_TTS_MODEL)
             ?.let { runCatching { TtsModel.valueOf(it) }.getOrNull() }
-            ?: TtsModel.KOKORO
+            ?: TtsModel.KOKORO_SHORT_TURN
         // When set, the FunctionGemma bundle is downloaded here too, so the
         // whole ~800 MB setup runs in this foreground worker — surviving doze
         // and Wi-Fi power-save that would kill an in-app download.
@@ -231,27 +231,28 @@ class ModelDownloadWorker(
             precision: ModelPrecision = ModelPrecision.INT8,
             sttModel: SttModel = SttModel.PARAKEET_EOU,
             sttBackend: SttBackend = SttBackend.ONNX,
-            ttsModel: TtsModel = TtsModel.KOKORO,
+            ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
             includeLlm: Boolean = false,
         ): String {
             if (
                 precision == ModelPrecision.INT8 &&
                 sttModel == SttModel.PARAKEET_EOU &&
                 sttBackend == SttBackend.ONNX &&
-                ttsModel == TtsModel.KOKORO &&
+                ttsModel.isKokoro &&
                 !includeLlm
             ) {
                 return UNIQUE_NAME
             }
             val llm = if (includeLlm) ".llm" else ""
-            return "$UNIQUE_NAME.${precision.name}.${sttModel.name}.${sttBackend.name}.${ttsModel.name}$llm"
+            val ttsName = if (ttsModel.isKokoro) TtsModel.KOKORO.name else ttsModel.name
+            return "$UNIQUE_NAME.${precision.name}.${sttModel.name}.${sttBackend.name}.$ttsName$llm"
         }
 
         fun request(
             precision: ModelPrecision = ModelPrecision.INT8,
             sttModel: SttModel = SttModel.PARAKEET_EOU,
             sttBackend: SttBackend = SttBackend.ONNX,
-            ttsModel: TtsModel = TtsModel.KOKORO,
+            ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
             includeLlm: Boolean = false,
         ) =
             OneTimeWorkRequestBuilder<ModelDownloadWorker>()
@@ -274,7 +275,7 @@ class ModelDownloadWorker(
             precision: ModelPrecision = ModelPrecision.INT8,
             sttModel: SttModel = SttModel.PARAKEET_EOU,
             sttBackend: SttBackend = SttBackend.ONNX,
-            ttsModel: TtsModel = TtsModel.KOKORO,
+            ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
             includeLlm: Boolean = false,
         ): java.util.UUID {
             val req = request(precision, sttModel, sttBackend, ttsModel, includeLlm)

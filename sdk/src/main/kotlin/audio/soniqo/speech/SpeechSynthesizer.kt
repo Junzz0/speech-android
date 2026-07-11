@@ -10,11 +10,11 @@ data class SpeechSynthesizerConfig(
     /** Path to directory containing TTS model files. */
     val modelDir: String = "",
 
-    /** Enable NNAPI acceleration where the native backend supports it. */
-    val useNnapi: Boolean = true,
+    /** Try the deprecated NNAPI execution provider. The CPU path is default. */
+    val useNnapi: Boolean = false,
 
-    /** Which TTS model to load. SUPERTONIC requires the LiteRT backend. */
-    val ttsModel: TtsModel = TtsModel.KOKORO,
+    /** Which TTS model/profile to load. SUPERTONIC requires LiteRT. */
+    val ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
 )
 
 data class SpeechSynthesisResult(
@@ -51,7 +51,7 @@ internal class SpeechSynthesizerImpl(config: SpeechSynthesizerConfig) : SpeechSy
     private var handle: Long = NativeBridge.nativeCreateSynthesizer(
         config.modelDir,
         config.useNnapi,
-        config.ttsModel.ordinal,
+        config.ttsModel.nativeId,
     ).also { h ->
         if (h == 0L) throw IllegalStateException(
             "Failed to create native synthesizer. Models may be corrupt - " +

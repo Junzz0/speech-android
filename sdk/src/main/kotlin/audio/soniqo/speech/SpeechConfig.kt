@@ -11,10 +11,18 @@ enum class SttModel { PARAKEET, NEMOTRON_MULTILINGUAL, PARAKEET_EOU }
  *  ships both; Parakeet is ONNX-only. */
 enum class SttBackend { ONNX, LITERT }
 
-/** On-device TTS model. KOKORO (ONNX, 24 kHz) is the default; SUPERTONIC is a
- *  LiteRT non-autoregressive flow-matching model (Supertonic-3, 44.1 kHz, 31
- *  languages, G2P-free) — requires the LiteRT backend to be built into the SDK. */
-enum class TtsModel { KOKORO, SUPERTONIC }
+/** On-device TTS model. [KOKORO_SHORT_TURN] uses the same Kokoro weights with
+ *  a shorter unrolled graph for bounded, low-latency voice-agent replies.
+ *  [KOKORO] keeps the full-capacity graph; [SUPERTONIC] is a LiteRT
+ *  flow-matching model (44.1 kHz, 31 languages, G2P-free). */
+enum class TtsModel(internal val nativeId: Int) {
+    KOKORO(0),
+    SUPERTONIC(1),
+    KOKORO_SHORT_TURN(2),
+}
+
+internal val TtsModel.isKokoro: Boolean
+    get() = this == TtsModel.KOKORO || this == TtsModel.KOKORO_SHORT_TURN
 
 /** What the pipeline does after a completed transcription. ECHO speaks the
  *  transcript back via TTS (demo/testing); TRANSCRIBE_ONLY emits
@@ -26,8 +34,9 @@ data class SpeechConfig(
     /** Path to directory containing ONNX model files. */
     val modelDir: String = "",
 
-    /** Enable NNAPI acceleration (Qualcomm Hexagon NPU / Samsung NPU). */
-    val useNnapi: Boolean = true,
+    /** Try the deprecated NNAPI execution provider. CPU is the measured,
+     *  portable default; hardware-provider experiments are opt-in. */
+    val useNnapi: Boolean = false,
 
     /** Which STT model to load. */
     val sttModel: SttModel = SttModel.PARAKEET_EOU,
@@ -35,8 +44,10 @@ data class SpeechConfig(
     /** STT inference backend (Nemotron multilingual supports both). */
     val sttBackend: SttBackend = SttBackend.ONNX,
 
-    /** Which TTS model to load. SUPERTONIC requires the LiteRT backend. */
-    val ttsModel: TtsModel = TtsModel.KOKORO,
+    /** Which TTS model/profile to load. The short-turn Kokoro graph is the
+     *  Android default because measured in-profile replies stay faster than
+     *  real time on CPU; oversized replies are split and retried safely. */
+    val ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
 
     /** Pipeline behavior after transcription. See [PipelineMode]. */
     val pipelineMode: PipelineMode = PipelineMode.ECHO,

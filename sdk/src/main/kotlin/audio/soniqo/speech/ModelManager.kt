@@ -42,7 +42,7 @@ object ModelManager {
         precision: ModelPrecision,
         sttModel: SttModel = SttModel.PARAKEET_EOU,
         sttBackend: SttBackend = SttBackend.ONNX,
-        ttsModel: TtsModel = TtsModel.KOKORO,
+        ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
     ): List<ModelFile> {
         val suffix = if (precision == ModelPrecision.INT8) "-int8" else ""
         val files = mutableListOf(
@@ -113,9 +113,12 @@ object ModelManager {
     }
 
     private fun ttsModels(ttsModel: TtsModel): List<ModelFile> = when (ttsModel) {
-        TtsModel.KOKORO -> listOf(
-            // E2E model — single file + external weights
+        TtsModel.KOKORO, TtsModel.KOKORO_SHORT_TURN -> listOf(
+            // Both graph profiles share one external weight blob. Keeping both
+            // protos in the same cache makes profile switches a ~2.6 MB fetch,
+            // never a second ~310 MB weights download.
             ModelFile("Kokoro-82M-ONNX", "kokoro-e2e.onnx"),
+            ModelFile("Kokoro-82M-ONNX", "kokoro-e2e-realtime.onnx"),
             ModelFile("Kokoro-82M-ONNX", "kokoro-e2e.onnx.data"),
             ModelFile("Kokoro-82M-ONNX", "vocab_index.json"),
             ModelFile("Kokoro-82M-ONNX", "us_gold.json"),
@@ -177,7 +180,7 @@ object ModelManager {
         precision: ModelPrecision = ModelPrecision.INT8,
         sttModel: SttModel = SttModel.PARAKEET_EOU,
         sttBackend: SttBackend = SttBackend.ONNX,
-        ttsModel: TtsModel = TtsModel.KOKORO,
+        ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
     ): Boolean {
         val dir = modelDirFile(context, precision, sttModel, sttBackend, ttsModel)
         if (!dir.exists()) return false
@@ -206,7 +209,7 @@ object ModelManager {
      */
     fun areTtsModelsReady(
         context: Context,
-        ttsModel: TtsModel = TtsModel.KOKORO,
+        ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
     ): Boolean {
         val dir = File(context.filesDir, "models_tts")
         if (!dir.exists()) return false
@@ -263,7 +266,7 @@ object ModelManager {
         precision: ModelPrecision = ModelPrecision.INT8,
         sttModel: SttModel = SttModel.PARAKEET_EOU,
         sttBackend: SttBackend = SttBackend.ONNX,
-        ttsModel: TtsModel = TtsModel.KOKORO,
+        ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
         onProgress: ((Progress) -> Unit)? = null,
     ): String = withContext(Dispatchers.IO) {
         val dir = modelDirFile(context, precision, sttModel, sttBackend, ttsModel)
@@ -304,7 +307,7 @@ object ModelManager {
     /** Returns the TTS-only model directory path, downloading models if needed. */
     suspend fun ensureTtsModels(
         context: Context,
-        ttsModel: TtsModel = TtsModel.KOKORO,
+        ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
         onProgress: ((Progress) -> Unit)? = null,
     ): String = withContext(Dispatchers.IO) {
         val dir = File(context.filesDir, "models_tts")
@@ -407,7 +410,7 @@ object ModelManager {
         "precision=${precision.name}",
         "stt=${sttModel.name}",
         "backend=${sttBackend.name}",
-        "tts=${ttsModel.name}",
+        "tts=${ttsCacheName(ttsModel)}",
     ).joinToString("|")
 
     private fun modelDirFile(
@@ -428,7 +431,7 @@ object ModelManager {
             precision == ModelPrecision.INT8 &&
             sttModel == SttModel.PARAKEET_EOU &&
             sttBackend == SttBackend.ONNX &&
-            ttsModel == TtsModel.KOKORO
+            ttsModel.isKokoro
         ) {
             return "models"
         }
@@ -437,15 +440,18 @@ object ModelManager {
             precision.name,
             sttModel.name,
             sttBackend.name,
-            ttsModel.name,
+            ttsCacheName(ttsModel),
         ).joinToString("-").lowercase()
     }
 
     private fun ttsModelSetKey(ttsModel: TtsModel): String = listOf(
         "v$MODEL_VERSION",
         "profile=TTS",
-        "tts=${ttsModel.name}",
+        "tts=${ttsCacheName(ttsModel)}",
     ).joinToString("|")
+
+    private fun ttsCacheName(ttsModel: TtsModel): String =
+        if (ttsModel.isKokoro) TtsModel.KOKORO.name else ttsModel.name
 
     private fun llmModelSetKey(): String = listOf(
         "v$MODEL_VERSION",
@@ -578,6 +584,7 @@ object ModelManager {
         "parakeet-eou-decoder.onnx" to 10_000_000L,     // ~16 MB
         "parakeet-eou-joint.onnx" to 1_000_000L,        // ~6 MB
         "kokoro-e2e.onnx" to 1_000L,                     // Small (weights in .data file)
+        "kokoro-e2e-realtime.onnx" to 1_000_000L,        // ~2.5 MB shared-weight graph
         "kokoro-e2e.onnx.data" to 50_000_000L,           // ~310 MB
         "silero-vad.onnx" to 500_000L,                   // ~2 MB
         "model.litertlm" to 200_000_000L,                // ~283 MB FunctionGemma bundle

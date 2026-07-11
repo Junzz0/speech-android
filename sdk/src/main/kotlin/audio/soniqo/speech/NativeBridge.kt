@@ -12,7 +12,7 @@ internal object NativeBridge {
         useInt8: Boolean,
         sttModel: Int,    // SttModel.ordinal: 0=PARAKEET, 1=NEMOTRON_MULTILINGUAL, 2=PARAKEET_EOU
         sttBackend: Int,  // SttBackend.ordinal: 0=ONNX, 1=LITERT
-        ttsModel: Int,    // TtsModel.ordinal: 0=KOKORO, 1=SUPERTONIC (LiteRT)
+        ttsModel: Int,    // 0=KOKORO, 1=SUPERTONIC, 2=KOKORO_SHORT_TURN
         pipelineMode: Int, // PipelineMode.ordinal: 0=ECHO, 1=TRANSCRIBE_ONLY
         language: String, // single language hint ("auto", "en-US", ...)
         languageHints: Array<String>, // shortlist for Parakeet TDT language-token guidance
@@ -38,7 +38,7 @@ internal object NativeBridge {
     external fun nativeCreateSynthesizer(
         modelDir: String,
         useNnapi: Boolean,
-        ttsModel: Int,    // TtsModel.ordinal: 0=KOKORO, 1=SUPERTONIC (LiteRT)
+        ttsModel: Int,    // 0=KOKORO, 1=SUPERTONIC, 2=KOKORO_SHORT_TURN
     ): Long
     external fun nativeDestroySynthesizer(handle: Long)
     external fun nativeStopSynthesizer(handle: Long)
