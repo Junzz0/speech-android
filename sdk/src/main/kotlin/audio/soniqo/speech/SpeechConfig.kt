@@ -16,6 +16,12 @@ enum class SttBackend { ONNX, LITERT }
  *  languages, G2P-free) — requires the LiteRT backend to be built into the SDK. */
 enum class TtsModel { KOKORO, SUPERTONIC }
 
+/** What the pipeline does after a completed transcription. ECHO speaks the
+ *  transcript back via TTS (demo/testing); TRANSCRIBE_ONLY emits
+ *  TranscriptionCompleted and returns to idle — for dictation or an
+ *  app-side agent loop that decides the response itself. */
+enum class PipelineMode { ECHO, TRANSCRIBE_ONLY }
+
 data class SpeechConfig(
     /** Path to directory containing ONNX model files. */
     val modelDir: String = "",
@@ -31,6 +37,9 @@ data class SpeechConfig(
 
     /** Which TTS model to load. SUPERTONIC requires the LiteRT backend. */
     val ttsModel: TtsModel = TtsModel.KOKORO,
+
+    /** Pipeline behavior after transcription. See [PipelineMode]. */
+    val pipelineMode: PipelineMode = PipelineMode.ECHO,
 
     /** Language/locale prompt for prompt-conditioned models and single-language
      *  Parakeet TDT guidance: e.g. "en-US", "fr", "ja-JP". "auto" lets the

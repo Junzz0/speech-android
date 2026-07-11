@@ -139,6 +139,13 @@ object ModelManager {
         ).map { ModelFile("Supertonic-3-LiteRT", it) }
     }
 
+    // FunctionGemma 270M tool-calling LLM — a single .litertlm bundle for the
+    // LiteRT-LM runtime. Kept out of the pipeline model set: only agent demos
+    // opt in via [ensureLlmModels], so SDK integrations never pull the 283 MB.
+    private fun llmModels(): List<ModelFile> = listOf(
+        ModelFile("FunctionGemma-270M-LiteRT-LM", "model.litertlm"),
+    )
+
     data class ModelFile(val repo: String, val filename: String)
 
     data class Progress(
@@ -215,6 +222,25 @@ object ModelManager {
         }
     }
 
+    /**
+     * True iff the LLM cache contains a valid FunctionGemma bundle.
+     * Cheap and side-effect free — does not start a download.
+     */
+    fun areLlmModelsReady(context: Context): Boolean {
+        val dir = File(context.filesDir, "models_llm")
+        if (!dir.exists()) return false
+
+        val versionFile = File(dir, "version.txt")
+        val cached = versionFile.takeIf { it.exists() }?.readText()?.trim()?.toIntOrNull() ?: 0
+        if (cached < MODEL_VERSION) return false
+        if (cachedModelSet(dir) != llmModelSetKey()) return false
+
+        return llmModels().all { model ->
+            val dest = File(dir, model.filename)
+            dest.exists() && isValidModel(dest, model.filename)
+        }
+    }
+
     /** Path to the model directory for [precision], without downloading. */
     fun modelDir(context: Context): String =
         File(context.filesDir, "models").absolutePath
@@ -222,6 +248,14 @@ object ModelManager {
     /** Path to the TTS-only model directory, without downloading. */
     fun ttsModelDir(context: Context): String =
         File(context.filesDir, "models_tts").absolutePath
+
+    /** Path to the LLM model directory, without downloading. */
+    fun llmModelDir(context: Context): String =
+        File(context.filesDir, "models_llm").absolutePath
+
+    /** Absolute path of the FunctionGemma .litertlm bundle, without downloading. */
+    fun llmModelFile(context: Context): String =
+        File(llmModelDir(context), llmModels().first().filename).absolutePath
 
     /** Returns the model directory path, downloading models if needed. */
     suspend fun ensureModels(
@@ -294,6 +328,46 @@ object ModelManager {
         File(dir, MODEL_SET_FILENAME).writeText(requestedModelSet)
 
         dir.absolutePath
+    }
+
+    /**
+     * Returns the path of the FunctionGemma .litertlm bundle, downloading it
+     * if needed. Separate from [ensureModels] so the 283 MB LLM only lands on
+     * devices whose app actually runs the tool-calling agent.
+     */
+    suspend fun ensureLlmModels(
+        context: Context,
+        onProgress: ((Progress) -> Unit)? = null,
+    ): String = withContext(Dispatchers.IO) {
+        val dir = File(context.filesDir, "models_llm")
+        dir.mkdirs()
+
+        val versionFile = File(dir, "version.txt")
+        val setFile = File(dir, MODEL_SET_FILENAME)
+        val requestedModelSet = llmModelSetKey()
+        val cached = versionFile.takeIf { it.exists() }?.readText()?.trim()?.toIntOrNull() ?: 0
+        val cachedSet = cachedModelSet(dir)
+
+        // Only wipe a genuinely stale/different cached set — never a fresh or
+        // in-progress download. Without this guard the partial .tmp is deleted
+        // on every worker retry / app restart (the version marker is written
+        // only on completion), so a 283 MB download over a flaky connection or
+        // across screen-doze could never resume. Markers present + matching =
+        // resume via HTTP Range in downloadFile.
+        val hadMarkers = versionFile.exists() || setFile.exists()
+        if (hadMarkers && (cached < MODEL_VERSION || cachedSet != requestedModelSet)) {
+            clearModelCache(dir)
+        }
+
+        // Write the set marker up front so a resumed run recognizes this
+        // download and keeps its .tmp. areLlmModelsReady still gates on the
+        // real, fully-downloaded file, so an early marker can't look "ready".
+        setFile.writeText(requestedModelSet)
+        versionFile.writeText(MODEL_VERSION.toString())
+
+        downloadMissingModels(dir, llmModels(), onProgress)
+
+        File(dir, llmModels().first().filename).absolutePath
     }
 
     private fun downloadMissingModels(
@@ -371,6 +445,12 @@ object ModelManager {
         "v$MODEL_VERSION",
         "profile=TTS",
         "tts=${ttsModel.name}",
+    ).joinToString("|")
+
+    private fun llmModelSetKey(): String = listOf(
+        "v$MODEL_VERSION",
+        "profile=LLM",
+        "llm=FUNCTIONGEMMA_270M",
     ).joinToString("|")
 
     private fun cachedModelSet(dir: File): String? =
@@ -500,6 +580,7 @@ object ModelManager {
         "kokoro-e2e.onnx" to 1_000L,                     // Small (weights in .data file)
         "kokoro-e2e.onnx.data" to 50_000_000L,           // ~310 MB
         "silero-vad.onnx" to 500_000L,                   // ~2 MB
+        "model.litertlm" to 200_000_000L,                // ~283 MB FunctionGemma bundle
     )
 
     private fun isValidModel(file: File, filename: String): Boolean {

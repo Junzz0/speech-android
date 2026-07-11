@@ -1,10 +1,24 @@
 package audio.soniqo.speech.llm
 
 /**
- * Kotlin port of `function_calls.format_tool_call_prompt` from the Python
- * speech-models export repo. Output is plain text — call
- * [applyChatTemplate] to wrap it in the model's chat-template scaffolding
- * before passing to the LiteRT-LM runtime.
+ * FunctionGemma prompt formatter, matching the canonical template from
+ * Google's "FunctionGemma formatting and best practices" guide (verified
+ * against the released 270M weights on the LiteRT-LM runtime):
+ *
+ * ```
+ * <start_of_turn>developer
+ * You are a model that can do function calling with the following functions
+ * <start_function_declaration>declaration:NAME{description:<escape>..<escape>,
+ * parameters:{properties:{..},required:[..],type:<escape>OBJECT<escape>}}<end_function_declaration><end_of_turn>
+ * <start_of_turn>user
+ * ..<end_of_turn>
+ * <start_of_turn>model
+ * ```
+ *
+ * Object keys serialize in alphabetical order and type names must be the
+ * UPPERCASE variants (`OBJECT`, `STRING`, `INTEGER`, `NUMBER`, `BOOLEAN`,
+ * `ARRAY`) — both taken from the canonical examples; deviations measurably
+ * degrade the 270M model's call syntax.
  */
 object FunctionGemmaPrompt {
 
@@ -18,24 +32,31 @@ object FunctionGemmaPrompt {
     const val FUNCTION_RESPONSE_END       = "<end_function_response>"
     const val ESCAPE                      = "<escape>"
 
+    const val DEVELOPER_PREAMBLE =
+        "You are a model that can do function calling with the following functions"
+
+    /** Developer-turn body: preamble + one declaration block per tool. */
     fun formatDeclarations(tools: List<FunctionDeclaration>): String = buildString {
-        append(FUNCTION_DECLARATIONS_START).append('\n')
+        append(DEVELOPER_PREAMBLE)
         for (tool in tools) {
-            append(FUNCTION_DECLARATION_START).append('\n')
-            append("name:").append(tool.name)
-                .append(",description:").append(ESCAPE).append(tool.description).append(ESCAPE)
-                .append(",parameters:").append(formatValue(tool.parameters))
-            append('\n').append(FUNCTION_DECLARATION_END).append('\n')
+            append(FUNCTION_DECLARATION_START)
+            append("declaration:").append(tool.name)
+            append("{description:").append(ESCAPE).append(tool.description).append(ESCAPE)
+            append(",parameters:").append(formatValue(tool.parameters))
+            append('}')
+            append(FUNCTION_DECLARATION_END)
         }
-        append(FUNCTION_DECLARATIONS_END)
     }
 
+    /** Full chat-templated prompt: developer turn + user turn + model cue. */
+    fun formatPrompt(tools: List<FunctionDeclaration>, userText: String): String =
+        "<start_of_turn>developer\n${formatDeclarations(tools)}<end_of_turn>\n" +
+            "<start_of_turn>user\n$userText<end_of_turn>\n" +
+            "<start_of_turn>model\n"
+
+    /** Un-templated variant for runtimes that add chat scaffolding themselves. */
     fun formatUserTurn(tools: List<FunctionDeclaration>, userText: String): String =
         "${formatDeclarations(tools)}\n$userText"
-
-    /** Wrap the formatted user turn in Gemma 3's chat-template scaffolding. */
-    fun applyChatTemplate(userMessage: String): String =
-        "<start_of_turn>user\n$userMessage<end_of_turn>\n<start_of_turn>model\n"
 
     fun formatResponse(name: String, response: Map<String, Any?>): String =
         "$FUNCTION_RESPONSE_START" + "response:" + name +
@@ -56,14 +77,10 @@ object FunctionGemmaPrompt {
     }
 
     private fun formatObject(dict: Map<String, Any?>): String {
-        // Match the field ordering the Python tokenisation script emits — the
-        // model was trained on those exact field names appearing in this order.
-        val preferred = listOf("type", "description", "properties", "required", "items", "enum")
-        val keys = dict.keys.toMutableList().sortedWith(compareBy(
-            { preferred.indexOf(it).let { idx -> if (idx == -1) Int.MAX_VALUE else idx } },
-            { it },
-        ))
-        val pairs = keys.joinToString(",") { "${it}:${formatValue(dict[it])}" }
+        // Canonical serialization orders object keys alphabetically (e.g.
+        // parameters:{properties:..,required:..,type:..}) — the model was
+        // trained on that exact ordering.
+        val pairs = dict.keys.sorted().joinToString(",") { "${it}:${formatValue(dict[it])}" }
         return "{$pairs}"
     }
 }

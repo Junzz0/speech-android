@@ -13,6 +13,7 @@ internal object NativeBridge {
         sttModel: Int,    // SttModel.ordinal: 0=PARAKEET, 1=NEMOTRON_MULTILINGUAL, 2=PARAKEET_EOU
         sttBackend: Int,  // SttBackend.ordinal: 0=ONNX, 1=LITERT
         ttsModel: Int,    // TtsModel.ordinal: 0=KOKORO, 1=SUPERTONIC (LiteRT)
+        pipelineMode: Int, // PipelineMode.ordinal: 0=ECHO, 1=TRANSCRIBE_ONLY
         language: String, // single language hint ("auto", "en-US", ...)
         languageHints: Array<String>, // shortlist for Parakeet TDT language-token guidance
         callback: EventCallback,
@@ -27,6 +28,12 @@ internal object NativeBridge {
     external fun nativePushAudio(handle: Long, samples: FloatArray, count: Int)
     external fun nativeResumeListen(handle: Long)
     external fun nativeGetState(handle: Long): Int
+
+    // Direct synthesis with the pipeline's already-loaded TTS model — lets a
+    // TRANSCRIBE_ONLY agent loop speak responses without a second TTS copy.
+    external fun nativePipelineTtsSampleRate(handle: Long): Int
+    external fun nativePipelineSynthesize(handle: Long, text: String, language: String): ByteArray
+    external fun nativePipelineCancelSynthesis(handle: Long)
 
     external fun nativeCreateSynthesizer(
         modelDir: String,

@@ -109,6 +109,33 @@ class ModelManagerManifestTest {
         assertEquals(expected, styleFiles)
     }
 
+    @Test
+    fun llmManifest_isSingleFunctionGemmaBundle() {
+        assertEquals(
+            listOf(ModelManager.ModelFile("FunctionGemma-270M-LiteRT-LM", "model.litertlm")),
+            llmModelFiles(),
+        )
+    }
+
+    @Test
+    fun llmModelSetKey_isSeparateFromPipelineAndTtsCacheKeys() {
+        assertNotEquals(llmModelSetKey(), modelSetKey())
+        assertNotEquals(llmModelSetKey(), ttsModelSetKey(TtsModel.KOKORO))
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun llmModelFiles(): List<ModelManager.ModelFile> {
+        val method = ModelManager::class.java.getDeclaredMethod("llmModels")
+        method.isAccessible = true
+        return method.invoke(ModelManager) as List<ModelManager.ModelFile>
+    }
+
+    private fun llmModelSetKey(): String {
+        val method = ModelManager::class.java.getDeclaredMethod("llmModelSetKey")
+        method.isAccessible = true
+        return method.invoke(ModelManager) as String
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun modelFiles(
         sttModel: SttModel = SttModel.PARAKEET_EOU,

@@ -31,6 +31,16 @@ class FunctionGemma(
      * litert-lm transitive dependency tree.
      */
     interface Runtime {
+        /**
+         * True if the engine wraps prompts in the Gemma chat template
+         * itself. When true the SDK passes the bare declarations + user
+         * text; when false it builds the full developer/user/model turn
+         * structure via [FunctionGemmaPrompt.formatPrompt]. Both
+         * double-templating and missing templating degrade tool-call
+         * accuracy, so this must match the engine.
+         */
+        val appliesChatTemplate: Boolean get() = false
+
         /** Process a full prompt and return raw model text up to a stop token. */
         fun generate(prompt: String, maxNewTokens: Int): String
 
@@ -46,9 +56,11 @@ class FunctionGemma(
      * that you parse with [parseToolCalls].
      */
     fun generateToolCall(userText: String, tools: List<FunctionDeclaration>): String {
-        val prompt = FunctionGemmaPrompt.formatUserTurn(tools, userText)
-        val wrapped = FunctionGemmaPrompt.applyChatTemplate(prompt)
-        return runtime.generate(wrapped, maxNewTokens)
+        val prompt = if (runtime.appliesChatTemplate)
+            FunctionGemmaPrompt.formatUserTurn(tools, userText)
+        else
+            FunctionGemmaPrompt.formatPrompt(tools, userText)
+        return runtime.generate(prompt, maxNewTokens)
     }
 
     /** Extract structured calls from a raw model response. */

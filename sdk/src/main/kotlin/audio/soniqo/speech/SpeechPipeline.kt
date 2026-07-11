@@ -46,6 +46,21 @@ interface SpeechPipeline : AutoCloseable {
     /** Signal that response playback finished — resume listening. */
     fun resumeListening()
 
+    /** Sample rate of [synthesize] output, or 0 if unsupported. */
+    val ttsSampleRate: Int get() = 0
+
+    /**
+     * Synthesize [text] with the pipeline's own TTS model — no second model
+     * instance. Intended for [PipelineMode.TRANSCRIBE_ONLY] agent loops that
+     * compose their response app-side; in ECHO mode the pipeline synthesizes
+     * on its own and this must not be called concurrently with a response.
+     */
+    fun synthesize(text: String, language: String = "en"): SpeechSynthesisResult =
+        throw UnsupportedOperationException("This SpeechPipeline does not support direct synthesis")
+
+    /** Cancel an in-progress [synthesize]. */
+    fun cancelSynthesis() {}
+
     companion object {
         operator fun invoke(config: SpeechConfig): SpeechPipeline = SpeechPipelineImpl(config)
     }
@@ -85,6 +100,7 @@ internal class SpeechPipelineImpl(config: SpeechConfig) : SpeechPipeline {
         config.sttModel.ordinal,
         config.sttBackend.ordinal,
         config.ttsModel.ordinal,
+        config.pipelineMode.ordinal,
         config.language,
         config.languageHints.toTypedArray(),
         nativeCallback,
@@ -117,6 +133,21 @@ internal class SpeechPipelineImpl(config: SpeechConfig) : SpeechPipeline {
 
     override fun resumeListening() {
         NativeBridge.nativeResumeListen(handle)
+    }
+
+    override val ttsSampleRate: Int
+        get() = NativeBridge.nativePipelineTtsSampleRate(handle)
+
+    override fun synthesize(text: String, language: String): SpeechSynthesisResult {
+        check(handle != 0L) { "SpeechPipeline is closed" }
+        return SpeechSynthesisResult(
+            sampleRate = ttsSampleRate,
+            pcm16 = NativeBridge.nativePipelineSynthesize(handle, text, language),
+        )
+    }
+
+    override fun cancelSynthesis() {
+        if (handle != 0L) NativeBridge.nativePipelineCancelSynthesis(handle)
     }
 
     override fun close() {
