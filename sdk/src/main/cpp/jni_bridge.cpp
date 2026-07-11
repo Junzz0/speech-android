@@ -47,6 +47,11 @@ struct PipelineHandle {
     std::unique_ptr<speech_core::DeepFilterEnhancer> enhancer;
     std::unique_ptr<speech_core::VoicePipeline> pipeline;
 
+    // Serializes nativePipelineSynthesize calls on the shared TTS instance.
+    // In TranscribeOnly mode the pipeline itself never touches TTS, so this
+    // only guards against concurrent Kotlin-side synthesize() calls.
+    std::mutex tts_mutex;
+
     JavaVM* jvm = nullptr;
     jobject callback = nullptr;
     jmethodID on_event_mid = nullptr;
@@ -64,6 +69,8 @@ static constexpr int BACKEND_ONNX = 0;
 static constexpr int BACKEND_LITERT = 1;
 static constexpr int TTS_KOKORO = 0;
 static constexpr int TTS_SUPERTONIC = 1;
+static constexpr int MODE_ECHO = 0;
+static constexpr int MODE_TRANSCRIBE_ONLY = 1;
 
 static std::unique_ptr<speech_core::TTSInterface> create_tts(
     const std::string& dir, bool nnapi, int ttsModel)
@@ -204,7 +211,8 @@ JNIEXPORT jlong JNICALL
 Java_audio_soniqo_speech_NativeBridge_nativeCreate(
     JNIEnv* env, jobject /*thiz*/,
     jstring modelDir, jboolean useNnapi, jboolean useInt8,
-    jint sttModel, jint sttBackend, jint ttsModel, jstring language,
+    jint sttModel, jint sttBackend, jint ttsModel, jint pipelineMode,
+    jstring language,
     jobjectArray languageHints,
     jobject callback,
     jboolean emitPartialTranscriptions, jfloat partialTranscriptionInterval)
@@ -280,7 +288,9 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
         cfg.post_playback_guard = 0.15f;
         cfg.emit_partial_transcriptions = emitPartialTranscriptions;
         cfg.partial_transcription_interval = partialTranscriptionInterval;
-        cfg.mode = speech_core::AgentConfig::Mode::Echo;
+        cfg.mode = (pipelineMode == MODE_TRANSCRIBE_ONLY)
+            ? speech_core::AgentConfig::Mode::TranscribeOnly
+            : speech_core::AgentConfig::Mode::Echo;
 
         // Note: DeepFilterNet3 noise cancellation is disabled in the pipeline.
         // DFN operates at 48 kHz but the pipeline pushes 16 kHz audio —
@@ -437,24 +447,18 @@ Java_audio_soniqo_speech_NativeBridge_nativeSynthesizerSampleRate(
     return static_cast<jint>(h->tts->output_sample_rate());
 }
 
-JNIEXPORT jbyteArray JNICALL
-Java_audio_soniqo_speech_NativeBridge_nativeSynthesize(
-    JNIEnv* env, jobject /*thiz*/, jlong handle, jstring text, jstring language)
+// Synthesize with [tts] under [mutex], returning PCM16 mono little-endian
+// bytes. Throws a Java RuntimeException and returns nullptr on failure.
+static jbyteArray synthesize_pcm16(JNIEnv* env, speech_core::TTSInterface& tts,
+                                   std::mutex& mutex, jstring text, jstring language)
 {
-    auto* h = reinterpret_cast<SynthesizerHandle*>(handle);
-    if (!h || !h->tts) {
-        jclass ex_cls = env->FindClass("java/lang/IllegalStateException");
-        if (ex_cls) env->ThrowNew(ex_cls, "Native synthesizer is closed");
-        return nullptr;
-    }
-
     std::string input = jstring_to_string(env, text);
     std::string lang = jstring_to_string(env, language);
     std::vector<int16_t> pcm;
 
     try {
-        std::lock_guard<std::mutex> lock(h->mutex);
-        h->tts->synthesize(input, lang, [&pcm](const float* samples, size_t length, bool /*is_final*/) {
+        std::lock_guard<std::mutex> lock(mutex);
+        tts.synthesize(input, lang, [&pcm](const float* samples, size_t length, bool /*is_final*/) {
             pcm.reserve(pcm.size() + length);
             for (size_t i = 0; i < length; ++i) {
                 const float clamped = std::max(-1.0f, std::min(1.0f, samples[i]));
@@ -479,6 +483,49 @@ Java_audio_soniqo_speech_NativeBridge_nativeSynthesize(
             reinterpret_cast<const jbyte*>(pcm.data()));
     }
     return out;
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeSynthesize(
+    JNIEnv* env, jobject /*thiz*/, jlong handle, jstring text, jstring language)
+{
+    auto* h = reinterpret_cast<SynthesizerHandle*>(handle);
+    if (!h || !h->tts) {
+        jclass ex_cls = env->FindClass("java/lang/IllegalStateException");
+        if (ex_cls) env->ThrowNew(ex_cls, "Native synthesizer is closed");
+        return nullptr;
+    }
+    return synthesize_pcm16(env, *h->tts, h->mutex, text, language);
+}
+
+JNIEXPORT jint JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativePipelineTtsSampleRate(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
+{
+    auto* h = reinterpret_cast<PipelineHandle*>(handle);
+    if (!h || !h->tts) return 0;
+    return static_cast<jint>(h->tts->output_sample_rate());
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativePipelineSynthesize(
+    JNIEnv* env, jobject /*thiz*/, jlong handle, jstring text, jstring language)
+{
+    auto* h = reinterpret_cast<PipelineHandle*>(handle);
+    if (!h || !h->tts) {
+        jclass ex_cls = env->FindClass("java/lang/IllegalStateException");
+        if (ex_cls) env->ThrowNew(ex_cls, "Native pipeline is closed");
+        return nullptr;
+    }
+    return synthesize_pcm16(env, *h->tts, h->tts_mutex, text, language);
+}
+
+JNIEXPORT void JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativePipelineCancelSynthesis(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
+{
+    auto* h = reinterpret_cast<PipelineHandle*>(handle);
+    if (h && h->tts) h->tts->cancel();
 }
 
 } // extern "C"

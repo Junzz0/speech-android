@@ -24,12 +24,18 @@ object FunctionGemmaParser {
         return result
     }
 
-    private fun parseCallBody(body: String): FunctionCall? {
-        if (!body.startsWith("call:")) return null
+    private fun parseCallBody(rawBody: String): FunctionCall? {
+        // Models (and runtimes) may emit a newline between the marker and the
+        // call body — tolerate surrounding whitespace before matching. The
+        // `call:` prefix from the training format is optional: the released
+        // FunctionGemma-270M weights emit `NAME {args}` without it (verified
+        // against the LiteRT-LM runtime).
+        val body = rawBody.trim()
         val afterCall = body.removePrefix("call:")
         val brace = afterCall.indexOf('{')
         if (brace < 0) return null
         val name = afterCall.substring(0, brace).trim()
+        if (name.isEmpty() || name.any { it.isWhitespace() }) return null
         val parser = Parser(afterCall.substring(brace))
         val value = parser.parseValue()
         if (value !is ArgumentValue.Object) return null

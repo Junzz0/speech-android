@@ -69,6 +69,10 @@ class ModelDownloadWorker(
         val ttsModel = inputData.getString(KEY_TTS_MODEL)
             ?.let { runCatching { TtsModel.valueOf(it) }.getOrNull() }
             ?: TtsModel.KOKORO
+        // When set, the FunctionGemma bundle is downloaded here too, so the
+        // whole ~800 MB setup runs in this foreground worker — surviving doze
+        // and Wi-Fi power-save that would kill an in-app download.
+        val includeLlm = inputData.getBoolean(KEY_INCLUDE_LLM, false)
 
         runCatching { setForeground(buildForegroundInfo(0, "Preparing speech models…")) }
 
@@ -78,6 +82,33 @@ class ModelDownloadWorker(
         // janks the main thread, so we coalesce to visible changes only.
         var lastNotifiedPct = -1
         var lastNotifiedFile = ""
+        val report: (ModelManager.Progress) -> Unit = { p ->
+            val pct = progressPercent(
+                p.completed,
+                p.totalFiles,
+                p.bytesDownloaded,
+                p.fileTotalBytes,
+            )
+            setProgressAsync(workDataOf(
+                KEY_FILE to p.file,
+                KEY_COMPLETED to p.completed,
+                KEY_TOTAL to p.totalFiles,
+                KEY_BYTES_DOWNLOADED to p.bytesDownloaded,
+                KEY_FILE_TOTAL_BYTES to p.fileTotalBytes,
+                KEY_PERCENT to pct,
+            ))
+            if (pct != lastNotifiedPct || p.file != lastNotifiedFile) {
+                lastNotifiedPct = pct
+                lastNotifiedFile = p.file
+                runCatching {
+                    setForegroundAsync(buildForegroundInfo(
+                        percent = pct,
+                        text = "${p.file}  ${formatMb(p.bytesDownloaded)}/${formatMb(p.fileTotalBytes)}" +
+                            "  ·  ${p.completed}/${p.totalFiles}",
+                    ))
+                }
+            }
+        }
 
         return try {
             val modelDir = ModelManager.ensureModels(
@@ -86,34 +117,11 @@ class ModelDownloadWorker(
                 sttModel = sttModel,
                 sttBackend = sttBackend,
                 ttsModel = ttsModel,
-                onProgress = { p ->
-                    val pct = progressPercent(
-                        p.completed,
-                        p.totalFiles,
-                        p.bytesDownloaded,
-                        p.fileTotalBytes,
-                    )
-                    setProgressAsync(workDataOf(
-                        KEY_FILE to p.file,
-                        KEY_COMPLETED to p.completed,
-                        KEY_TOTAL to p.totalFiles,
-                        KEY_BYTES_DOWNLOADED to p.bytesDownloaded,
-                        KEY_FILE_TOTAL_BYTES to p.fileTotalBytes,
-                        KEY_PERCENT to pct,
-                    ))
-                    if (pct != lastNotifiedPct || p.file != lastNotifiedFile) {
-                        lastNotifiedPct = pct
-                        lastNotifiedFile = p.file
-                        runCatching {
-                            setForegroundAsync(buildForegroundInfo(
-                                percent = pct,
-                                text = "${p.file}  ${formatMb(p.bytesDownloaded)}/${formatMb(p.fileTotalBytes)}" +
-                                    "  ·  ${p.completed}/${p.totalFiles}",
-                            ))
-                        }
-                    }
-                },
+                onProgress = report,
             )
+            if (includeLlm) {
+                ModelManager.ensureLlmModels(applicationContext, onProgress = report)
+            }
             Result.success(workDataOf(KEY_MODEL_DIR to modelDir))
         } catch (e: IOException) {
             // Network / disk hiccup — let WorkManager retry with backoff.
@@ -192,6 +200,7 @@ class ModelDownloadWorker(
         const val KEY_STT_MODEL = "sttModel"
         const val KEY_STT_BACKEND = "sttBackend"
         const val KEY_TTS_MODEL = "ttsModel"
+        const val KEY_INCLUDE_LLM = "includeLlm"
 
         // Output keys
         const val KEY_MODEL_DIR = "modelDir"
@@ -223,16 +232,19 @@ class ModelDownloadWorker(
             sttModel: SttModel = SttModel.PARAKEET_EOU,
             sttBackend: SttBackend = SttBackend.ONNX,
             ttsModel: TtsModel = TtsModel.KOKORO,
+            includeLlm: Boolean = false,
         ): String {
             if (
                 precision == ModelPrecision.INT8 &&
                 sttModel == SttModel.PARAKEET_EOU &&
                 sttBackend == SttBackend.ONNX &&
-                ttsModel == TtsModel.KOKORO
+                ttsModel == TtsModel.KOKORO &&
+                !includeLlm
             ) {
                 return UNIQUE_NAME
             }
-            return "$UNIQUE_NAME.${precision.name}.${sttModel.name}.${sttBackend.name}.${ttsModel.name}"
+            val llm = if (includeLlm) ".llm" else ""
+            return "$UNIQUE_NAME.${precision.name}.${sttModel.name}.${sttBackend.name}.${ttsModel.name}$llm"
         }
 
         fun request(
@@ -240,6 +252,7 @@ class ModelDownloadWorker(
             sttModel: SttModel = SttModel.PARAKEET_EOU,
             sttBackend: SttBackend = SttBackend.ONNX,
             ttsModel: TtsModel = TtsModel.KOKORO,
+            includeLlm: Boolean = false,
         ) =
             OneTimeWorkRequestBuilder<ModelDownloadWorker>()
                 .setInputData(workDataOf(
@@ -247,6 +260,7 @@ class ModelDownloadWorker(
                     KEY_STT_MODEL to sttModel.name,
                     KEY_STT_BACKEND to sttBackend.name,
                     KEY_TTS_MODEL to ttsModel.name,
+                    KEY_INCLUDE_LLM to includeLlm,
                 ))
                 .build()
 
@@ -261,10 +275,12 @@ class ModelDownloadWorker(
             sttModel: SttModel = SttModel.PARAKEET_EOU,
             sttBackend: SttBackend = SttBackend.ONNX,
             ttsModel: TtsModel = TtsModel.KOKORO,
+            includeLlm: Boolean = false,
         ): java.util.UUID {
-            val req = request(precision, sttModel, sttBackend, ttsModel)
+            val req = request(precision, sttModel, sttBackend, ttsModel, includeLlm)
             WorkManager.getInstance(context).enqueueUniqueWork(
-                uniqueName(precision, sttModel, sttBackend, ttsModel), ExistingWorkPolicy.KEEP, req,
+                uniqueName(precision, sttModel, sttBackend, ttsModel, includeLlm),
+                ExistingWorkPolicy.KEEP, req,
             )
             return req.id
         }
