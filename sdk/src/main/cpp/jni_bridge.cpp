@@ -221,7 +221,8 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
     jstring language,
     jobjectArray languageHints,
     jobject callback,
-    jboolean emitPartialTranscriptions, jfloat partialTranscriptionInterval)
+    jboolean emitPartialTranscriptions, jfloat partialTranscriptionInterval,
+    jfloat endOfSpeechSilenceSec)
 {
     auto dir = jstring_to_string(env, modelDir);
     bool nnapi = useNnapi;
@@ -288,7 +289,10 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
         h->tts = create_tts(dir, nnapi, ttsModel);
 
         speech_core::AgentConfig cfg;
-        cfg.vad.min_silence_duration = 0.5f;
+        // App-tunable end-of-utterance silence; <=0 falls back to the
+        // snappy-command default.
+        cfg.vad.min_silence_duration =
+            endOfSpeechSilenceSec > 0.0f ? endOfSpeechSilenceSec : 0.5f;
         cfg.vad.min_speech_duration = 0.15f;
         cfg.eager_stt = false;
         cfg.post_playback_guard = 0.15f;

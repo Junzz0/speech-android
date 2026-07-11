@@ -106,6 +106,7 @@ internal class SpeechPipelineImpl(config: SpeechConfig) : SpeechPipeline {
         nativeCallback,
         config.emitPartialTranscriptions,
         config.partialTranscriptionInterval,
+        config.endOfSpeechSilenceSec,
     ).also { h ->
         if (h == 0L) throw IllegalStateException(
             "Failed to create native pipeline. Models may be corrupt — " +

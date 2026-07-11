@@ -73,4 +73,10 @@ data class SpeechConfig(
      *  Entries may be ISO codes or BCP-47 tags, e.g. listOf("en-US", "fr").
      *  Ignored when [language] selects a concrete non-auto language. */
     val languageHints: List<String> = emptyList(),
+
+    /** Seconds of detected silence that end an utterance. The 0.5 s default
+     *  favors snappy short commands; raise it (0.8–1.2 s) when users pause
+     *  mid-utterance — dictating digit sequences, thinking through a
+     *  sentence — and get cut off early. */
+    val endOfSpeechSilenceSec: Float = 0.5f,
 )

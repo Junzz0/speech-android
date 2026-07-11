@@ -19,6 +19,7 @@ internal object NativeBridge {
         callback: EventCallback,
         emitPartialTranscriptions: Boolean,
         partialTranscriptionInterval: Float,
+        endOfSpeechSilenceSec: Float,  // seconds of silence ending an utterance
     ): Long
 
     external fun nativeNnapiFallbackReason(): String?
