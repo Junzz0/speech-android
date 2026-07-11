@@ -26,7 +26,7 @@ Este repositório é o **empacotamento Android**: SDK Kotlin, ponte JNI, app de 
 
 Os modelos são baixados automaticamente no primeiro lançamento via `ModelManager.ensureModels()`.
 
-`SpeechConfig()` usa `SttModel.PARAKEET_EOU` e `TtsModel.KOKORO` por padrão para manter integrações do SDK e o reconhecedor do sistema no caminho Android de baixa memória. O app demo seleciona `SttModel.PARAKEET` para que as telas de eco e ditado usem o modelo TDT maior de 114 idiomas.
+`SpeechConfig()` usa `SttModel.PARAKEET_EOU` e `TtsModel.KOKORO_SHORT_TURN` por padrão para manter integrações do SDK e o reconhecedor do sistema no caminho Android de baixa memória. O app demo seleciona `SttModel.PARAKEET` para que as telas de eco e ditado usem o modelo TDT maior de 114 idiomas.
 
 Para reconhecimento focado em idiomas, use `SpeechConfig(sttModel = SttModel.PARAKEET, languageHints = listOf("en", "fr"))`. Defina `language = "en"` quando quiser fixar um único idioma.
 
@@ -50,7 +50,7 @@ dependencies {
 val modelDir = ModelManager.ensureModels(context)
 
 val pipeline = SpeechPipeline(
-    SpeechConfig(modelDir = modelDir, useNnapi = true)
+    SpeechConfig(modelDir = modelDir, useNnapi = false)
 )
 
 pipeline.events.collect { event ->
@@ -192,12 +192,14 @@ Adicione `app/src/main/res/xml/tts_engine.xml`:
 
 ## Desempenho
 
-Medido em Galaxy S23 Android, CPU apenas salvo indicação. RTF menor é mais rápido.
+Medido em um Galaxy S23 Ultra (SM-S918B), apenas CPU salvo indicação. RTF é
+tempo de parede ÷ duração do áudio emitido: menor é mais rápido, e <1,0 é mais rápido que o tempo real.
 
 | Modelo | Tarefa | RTF | Latência | Pico de memória |
 | --- | --- | --- | --- | --- |
 | Parakeet-EOU 120M ONNX INT8 | STT em streaming + EOU | 0,21 | parciais em streaming | 232 MB |
-| Kokoro 82M ONNX FP32 | TTS | 0,53 | por frase | 640 MB |
+| Kokoro 82M grafo completo (publicado, CPU com dois threads) | TTS | 1,81 | por frase | ~604 MB |
+| Kokoro 82M turno curto (grafo de 3,0 s, padrão) | TTS | 0,75–0,88 | respostas delimitadas; nova tentativa segura | ~527 MB |
 | Supertonic-3 LiteRT | TTS | 0,34 | ~1,1s TTFA | 832 MB |
 | Silero VAD v5 | VAD | <0,01 | <1ms por bloco de 32ms | <10 MB |
 

@@ -127,6 +127,27 @@ class ModelDownloadWorkerTest {
     }
 
     @Test
+    fun doWork_missingTtsModelInput_defaultsToShortTurnKokoro() = runBlocking {
+        coEvery {
+            ModelManager.ensureModels(any(), any(), any(), any(), any(), any())
+        } returns "/fake"
+
+        val worker = TestListenableWorkerBuilder<ModelDownloadWorker>(context).build()
+        worker.doWork()
+
+        coVerify(exactly = 1) {
+            ModelManager.ensureModels(
+                any(),
+                any(),
+                any(),
+                any(),
+                TtsModel.KOKORO_SHORT_TURN,
+                any(),
+            )
+        }
+    }
+
+    @Test
     fun doWork_modelInputs_arePassedToModelManager() = runBlocking {
         coEvery {
             ModelManager.ensureModels(any(), any(), any(), any(), any(), any())
@@ -185,6 +206,16 @@ class ModelDownloadWorkerTest {
         assertEquals(
             androidx.work.NetworkType.NOT_REQUIRED,
             req.workSpec.constraints.requiredNetworkType,
+        )
+    }
+
+    @Test
+    fun request_defaultUsesShortTurnKokoro() {
+        val req = ModelDownloadWorker.request()
+
+        assertEquals(
+            "KOKORO_SHORT_TURN",
+            req.workSpec.input.getString(ModelDownloadWorker.KEY_TTS_MODEL),
         )
     }
 

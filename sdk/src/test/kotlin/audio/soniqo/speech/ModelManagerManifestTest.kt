@@ -3,6 +3,7 @@ package audio.soniqo.speech
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -18,6 +19,17 @@ class ModelManagerManifestTest {
     @Test
     fun speechConfigDefault_usesLowMemoryParakeetEou() {
         assertEquals(SttModel.PARAKEET_EOU, SpeechConfig().sttModel)
+        assertEquals(TtsModel.KOKORO_SHORT_TURN, SpeechConfig().ttsModel)
+        assertFalse(SpeechConfig().useNnapi)
+        assertEquals(TtsModel.KOKORO_SHORT_TURN, SpeechSynthesizerConfig().ttsModel)
+        assertFalse(SpeechSynthesizerConfig().useNnapi)
+    }
+
+    @Test
+    fun ttsNativeIds_areStable() {
+        assertEquals(0, TtsModel.KOKORO.nativeId)
+        assertEquals(1, TtsModel.SUPERTONIC.nativeId)
+        assertEquals(2, TtsModel.KOKORO_SHORT_TURN.nativeId)
     }
 
     @Test
@@ -63,6 +75,7 @@ class ModelManagerManifestTest {
         assertEquals(
             listOf(
                 ModelManager.ModelFile("Kokoro-82M-ONNX", "kokoro-e2e.onnx"),
+                ModelManager.ModelFile("Kokoro-82M-ONNX", "kokoro-e2e-realtime.onnx"),
                 ModelManager.ModelFile("Kokoro-82M-ONNX", "kokoro-e2e.onnx.data"),
                 ModelManager.ModelFile("Kokoro-82M-ONNX", "vocab_index.json"),
                 ModelManager.ModelFile("Kokoro-82M-ONNX", "us_gold.json"),
@@ -78,6 +91,39 @@ class ModelManagerManifestTest {
         )
         assertFalse(files.any { it.repo.contains("Parakeet") || it.repo.contains("Silero") })
         assertFalse(files.any { it.filename.startsWith("deepfilter") })
+        assertEquals(1, files.count { it.filename == "kokoro-e2e.onnx.data" })
+    }
+
+    @Test
+    fun kokoroProfiles_shareAssetsCachesAndWorkerName() {
+        assertEquals(
+            ttsModelFiles(TtsModel.KOKORO),
+            ttsModelFiles(TtsModel.KOKORO_SHORT_TURN),
+        )
+        assertEquals(
+            modelSetKey(ttsModel = TtsModel.KOKORO),
+            modelSetKey(ttsModel = TtsModel.KOKORO_SHORT_TURN),
+        )
+        assertEquals(
+            ttsModelSetKey(TtsModel.KOKORO),
+            ttsModelSetKey(TtsModel.KOKORO_SHORT_TURN),
+        )
+        assertEquals(
+            modelDirName(ttsModel = TtsModel.KOKORO),
+            modelDirName(ttsModel = TtsModel.KOKORO_SHORT_TURN),
+        )
+        assertEquals(
+            ModelDownloadWorker.uniqueName(ttsModel = TtsModel.KOKORO),
+            ModelDownloadWorker.uniqueName(ttsModel = TtsModel.KOKORO_SHORT_TURN),
+        )
+        assertNotEquals(
+            ttsModelSetKey(TtsModel.KOKORO_SHORT_TURN),
+            ttsModelSetKey(TtsModel.SUPERTONIC),
+        )
+        assertTrue(
+            ttsModelFiles(TtsModel.KOKORO_SHORT_TURN)
+                .any { it.filename == "kokoro-e2e-realtime.onnx" },
+        )
     }
 
     @Test

@@ -9,6 +9,7 @@ import androidx.test.core.app.ApplicationProvider
 import audio.soniqo.speech.SpeechSynthesisResult
 import audio.soniqo.speech.SpeechSynthesizer
 import audio.soniqo.speech.SpeechSynthesizerConfig
+import audio.soniqo.speech.TtsModel
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -73,6 +74,8 @@ class SpeechTextToSpeechServiceTest {
         service.synthesize(SynthesisRequest("hello", Bundle.EMPTY), callback)
 
         assertEquals("/fake/models_tts", service.createdConfig?.modelDir)
+        assertEquals(false, service.createdConfig?.useNnapi)
+        assertEquals(TtsModel.KOKORO_SHORT_TURN, service.createdConfig?.ttsModel)
         assertEquals("hello", fakeSynthesizer.lastText)
         assertEquals("en", fakeSynthesizer.lastLanguage)
         assertEquals(24_000, callback.sampleRate)

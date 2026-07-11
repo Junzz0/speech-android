@@ -26,7 +26,7 @@
 
 Модели загружаются автоматически при первом запуске через `ModelManager.ensureModels()`.
 
-`SpeechConfig()` по умолчанию использует `SttModel.PARAKEET_EOU` и `TtsModel.KOKORO`, чтобы интеграции SDK и системный распознаватель работали по низкопамятному Android-пути. Демо-приложение выбирает `SttModel.PARAKEET`, поэтому экраны эха и диктовки используют более крупную TDT-модель на 114 языков.
+`SpeechConfig()` по умолчанию использует `SttModel.PARAKEET_EOU` и `TtsModel.KOKORO_SHORT_TURN`, чтобы интеграции SDK и системный распознаватель работали по низкопамятному Android-пути. Демо-приложение выбирает `SttModel.PARAKEET`, поэтому экраны эха и диктовки используют более крупную TDT-модель на 114 языков.
 
 Для распознавания с фокусом на языки используйте `SpeechConfig(sttModel = SttModel.PARAKEET, languageHints = listOf("en", "fr"))`. Задайте `language = "en"`, если нужно зафиксировать один язык.
 
@@ -50,7 +50,7 @@ dependencies {
 val modelDir = ModelManager.ensureModels(context)
 
 val pipeline = SpeechPipeline(
-    SpeechConfig(modelDir = modelDir, useNnapi = true)
+    SpeechConfig(modelDir = modelDir, useNnapi = false)
 )
 
 pipeline.events.collect { event ->
@@ -169,14 +169,14 @@ adb shell settings put secure voice_recognition_service \
 
 ## Производительность
 
-Измерено на эмуляторе Android (arm64-v8a, без NNAPI). Реальное оборудование значительно быстрее.
-
-Измерено на Galaxy S23 Android, CPU-only если не указано иначе. Чем ниже RTF, тем быстрее.
+Измерено на Galaxy S23 Ultra (SM-S918B), только CPU если не указано иное. RTF — это
+настенное время ÷ длительность выданного аудио: чем ниже, тем быстрее; <1,0 быстрее реального времени.
 
 | Модель | Задача | RTF | Задержка | Пиковая память |
 | --- | --- | --- | --- | --- |
 | Parakeet-EOU 120M ONNX INT8 | Потоковый STT + EOU | 0,21 | потоковые partials | 232 МБ |
-| Kokoro 82M ONNX FP32 | TTS | 0,53 | по предложениям | 640 МБ |
+| Kokoro 82M полный граф (опубликованный, CPU с двумя потоками) | TTS | 1,81 | по предложениям | ~604 МБ |
+| Kokoro 82M короткий ход (граф 3,0 с, по умолчанию) | TTS | 0,75–0,88 | ограниченные ответы; безопасный повтор | ~527 МБ |
 | Supertonic-3 LiteRT | TTS | 0,34 | ~1,1 с TTFA | 832 МБ |
 | Silero VAD v5 | VAD | <0,01 | <1 мс на блок 32 мс | <10 МБ |
 

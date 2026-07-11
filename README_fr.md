@@ -26,7 +26,7 @@ Ce dépôt fournit le **packaging Android** : SDK Kotlin, pont JNI, application 
 
 Les modèles sont téléchargés automatiquement au premier lancement via `ModelManager.ensureModels()`.
 
-`SpeechConfig()` utilise `SttModel.PARAKEET_EOU` et `TtsModel.KOKORO` par défaut afin que les intégrations SDK et le service de reconnaissance système restent sur le chemin Android à faible mémoire. L'application de démo sélectionne `SttModel.PARAKEET` pour que les écrans écho et dictée utilisent le modèle TDT plus grand à 114 langues.
+`SpeechConfig()` utilise `SttModel.PARAKEET_EOU` et `TtsModel.KOKORO_SHORT_TURN` par défaut afin que les intégrations SDK et le service de reconnaissance système restent sur le chemin Android à faible mémoire. L'application de démo sélectionne `SttModel.PARAKEET` pour que les écrans écho et dictée utilisent le modèle TDT plus grand à 114 langues.
 
 Pour une reconnaissance centrée sur certaines langues, utilisez `SpeechConfig(sttModel = SttModel.PARAKEET, languageHints = listOf("en", "fr"))`. Définissez `language = "en"` pour fixer une seule langue.
 
@@ -50,7 +50,7 @@ dependencies {
 val modelDir = ModelManager.ensureModels(context)
 
 val pipeline = SpeechPipeline(
-    SpeechConfig(modelDir = modelDir, useNnapi = true)
+    SpeechConfig(modelDir = modelDir, useNnapi = false)
 )
 
 pipeline.events.collect { event ->
@@ -169,12 +169,14 @@ Ajoutez `app/src/main/res/xml/tts_engine.xml` :
 
 ## Performance
 
-Mesuré sur Galaxy S23 Android, CPU seul sauf indication. Un RTF plus bas est plus rapide.
+Mesuré sur un Galaxy S23 Ultra (SM-S918B), CPU seul sauf indication. Le RTF est le
+temps mural ÷ la durée audio émise : plus bas est plus rapide, et <1,0 est plus rapide que le temps réel.
 
 | Modèle | Tâche | RTF | Latence | Mémoire max |
 | --- | --- | --- | --- | --- |
 | Parakeet-EOU 120M ONNX INT8 | STT streaming + EOU | 0,21 | partiels streaming | 232 Mo |
-| Kokoro 82M ONNX FP32 | TTS | 0,53 | par phrase | 640 Mo |
+| Kokoro 82M graphe complet (publié, CPU à deux threads) | TTS | 1,81 | par phrase | ~604 Mo |
+| Kokoro 82M tour court (graphe de 3,0 s, par défaut) | TTS | 0,75–0,88 | réponses bornées ; nouvelle tentative sûre | ~527 Mo |
 | Supertonic-3 LiteRT | TTS | 0,34 | ~1,1 s TTFA | 832 Mo |
 | Silero VAD v5 | VAD | <0,01 | <1 ms par bloc 32 ms | <10 Mo |
 

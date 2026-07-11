@@ -26,7 +26,7 @@ This repo is the **Android packaging**: Kotlin SDK, JNI bridge, demo app. The C+
 
 Models are downloaded automatically on first launch via `ModelManager.ensureModels()`.
 
-`SpeechConfig()` defaults to `SttModel.PARAKEET_EOU` and `TtsModel.KOKORO`
+`SpeechConfig()` defaults to `SttModel.PARAKEET_EOU` and `TtsModel.KOKORO_SHORT_TURN`
 to keep SDK integrations and the system recognizer on the low-memory Android
 path. The demo app opts into `SttModel.PARAKEET` so its echo and dictation
 screens exercise the larger 114-language TDT model.
@@ -65,7 +65,7 @@ dependencies {
 val modelDir = ModelManager.ensureModels(context)
 
 val pipeline = SpeechPipeline(
-    SpeechConfig(modelDir = modelDir, useNnapi = true)
+    SpeechConfig(modelDir = modelDir, useNnapi = false)
 )
 
 pipeline.events.collect { event ->
@@ -248,12 +248,15 @@ Add `app/src/main/res/xml/tts_engine.xml`:
 
 ## Performance
 
-Measured on Galaxy S23 Android, CPU only unless noted. Lower RTF is faster.
+Measured on a Galaxy S23 Ultra (SM-S918B), CPU only unless noted. RTF is
+wall time ÷ emitted-audio duration: lower is faster, and <1.0 is faster than
+real time.
 
 | Model | Task | RTF | Latency | Peak memory |
 | --- | --- | --- | --- | --- |
 | Parakeet-EOU 120M ONNX INT8 | Streaming STT + EOU | 0.21 | streaming partials | 232 MB |
-| Kokoro 82M ONNX FP32 | TTS | 0.53 | sentence-level | 640 MB |
+| Kokoro 82M full graph (published, two CPU threads) | TTS | 1.81 | sentence-level | ~604 MB |
+| Kokoro 82M short-turn (3.0 s graph, default) | TTS | 0.75–0.88 | bounded replies; safe retry | ~527 MB |
 | Supertonic-3 LiteRT | TTS | 0.34 | ~1.1s TTFA | 832 MB |
 | Silero VAD v5 | VAD | <0.01 | <1ms per 32ms chunk | <10 MB |
 

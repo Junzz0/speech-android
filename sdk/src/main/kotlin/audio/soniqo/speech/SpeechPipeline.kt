@@ -99,7 +99,7 @@ internal class SpeechPipelineImpl(config: SpeechConfig) : SpeechPipeline {
         config.precision == ModelPrecision.INT8,
         config.sttModel.ordinal,
         config.sttBackend.ordinal,
-        config.ttsModel.ordinal,
+        config.ttsModel.nativeId,
         config.pipelineMode.ordinal,
         config.language,
         config.languageHints.toTypedArray(),

@@ -71,6 +71,7 @@ static constexpr int TTS_KOKORO = 0;
 static constexpr int TTS_SUPERTONIC = 1;
 static constexpr int MODE_ECHO = 0;
 static constexpr int MODE_TRANSCRIBE_ONLY = 1;
+static constexpr int TTS_KOKORO_SHORT_TURN = 2;
 
 static std::unique_ptr<speech_core::TTSInterface> create_tts(
     const std::string& dir, bool nnapi, int ttsModel)
@@ -92,11 +93,16 @@ static std::unique_ptr<speech_core::TTSInterface> create_tts(
 #endif
     }
 
+    if (ttsModel == TTS_KOKORO_SHORT_TURN) {
+        return std::make_unique<speech_core::KokoroTts>(
+            dir + "/kokoro-e2e-realtime.onnx",
+            dir + "/voices",
+            dir,
+            nnapi);
+    }
+
     return std::make_unique<speech_core::KokoroTts>(
-        dir + "/kokoro-e2e.onnx",
-        dir + "/voices",
-        dir,
-        nnapi);
+        dir + "/kokoro-e2e.onnx", dir + "/voices", dir, nnapi);
 }
 
 // ---------------------------------------------------------------------------

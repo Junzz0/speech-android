@@ -26,7 +26,7 @@
 
 모델은 `ModelManager.ensureModels()`를 통해 첫 실행 시 자동으로 다운로드됩니다.
 
-`SpeechConfig()`는 `SttModel.PARAKEET_EOU`와 `TtsModel.KOKORO`를 기본값으로 사용해 SDK 통합과 시스템 인식 서비스를 저메모리 Android 경로에서 실행합니다. 데모 앱은 `SttModel.PARAKEET`를 선택해 에코와 받아쓰기 화면에서 더 큰 114개 언어 TDT 모델을 사용합니다.
+`SpeechConfig()`는 `SttModel.PARAKEET_EOU`와 `TtsModel.KOKORO_SHORT_TURN`를 기본값으로 사용해 SDK 통합과 시스템 인식 서비스를 저메모리 Android 경로에서 실행합니다. 데모 앱은 `SttModel.PARAKEET`를 선택해 에코와 받아쓰기 화면에서 더 큰 114개 언어 TDT 모델을 사용합니다.
 
 언어 중심 인식에는 `SpeechConfig(sttModel = SttModel.PARAKEET, languageHints = listOf("en", "fr"))`를 사용하세요. 하나의 언어로 고정하려면 `language = "en"`을 설정하세요.
 
@@ -50,7 +50,7 @@ dependencies {
 val modelDir = ModelManager.ensureModels(context)
 
 val pipeline = SpeechPipeline(
-    SpeechConfig(modelDir = modelDir, useNnapi = true)
+    SpeechConfig(modelDir = modelDir, useNnapi = false)
 )
 
 pipeline.events.collect { event ->
@@ -169,14 +169,13 @@ adb shell settings put secure voice_recognition_service \
 
 ## 성능
 
-Android 에뮬레이터(arm64-v8a, NNAPI 없음)에서 측정. 실제 하드웨어는 훨씬 빠릅니다.
-
-Galaxy S23 Android에서 측정했습니다. 별도 표기가 없으면 CPU 기준입니다. RTF는 낮을수록 빠릅니다.
+Galaxy S23 Ultra(SM-S918B)에서 CPU만 사용해 측정했습니다. RTF는 경과 시간÷생성 오디오 길이이며, 낮을수록 빠르고 <1.0이면 실시간보다 빠릅니다.
 
 | 모델 | 작업 | RTF | 지연 시간 | 피크 메모리 |
 | --- | --- | --- | --- | --- |
 | Parakeet-EOU 120M ONNX INT8 | 스트리밍 STT + EOU | 0.21 | streaming partials | 232 MB |
-| Kokoro 82M ONNX FP32 | TTS | 0.53 | 문장 단위 | 640 MB |
+| Kokoro 82M 전체 그래프(공개 버전, CPU 2 스레드) | TTS | 1.81 | 문장 단위 | ~604 MB |
+| Kokoro 82M 짧은 턴(3.0초 그래프, 기본값) | TTS | 0.75–0.88 | 제한된 응답, 안전한 재시도 | ~527 MB |
 | Supertonic-3 LiteRT | TTS | 0.34 | ~1.1초 TTFA | 832 MB |
 | Silero VAD v5 | VAD | <0.01 | 32ms 청크당 <1ms | <10 MB |
 

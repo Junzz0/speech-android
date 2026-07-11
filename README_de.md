@@ -26,7 +26,7 @@ Dieses Repo ist das **Android-Packaging**: Kotlin-SDK, JNI-Bridge, Demo-App. Die
 
 Modelle werden beim ersten Start automatisch über `ModelManager.ensureModels()` heruntergeladen.
 
-`SpeechConfig()` verwendet standardmäßig `SttModel.PARAKEET_EOU` und `TtsModel.KOKORO`, damit SDK-Integrationen und Systemerkennung den speicherarmen Android-Pfad nutzen. Die Demo-App wählt `SttModel.PARAKEET`, sodass Echo- und Diktieransicht das größere TDT-Modell mit 114 Sprachen verwenden.
+`SpeechConfig()` verwendet standardmäßig `SttModel.PARAKEET_EOU` und `TtsModel.KOKORO_SHORT_TURN`, damit SDK-Integrationen und Systemerkennung den speicherarmen Android-Pfad nutzen. Die Demo-App wählt `SttModel.PARAKEET`, sodass Echo- und Diktieransicht das größere TDT-Modell mit 114 Sprachen verwenden.
 
 Für sprachfokussierte Erkennung verwende `SpeechConfig(sttModel = SttModel.PARAKEET, languageHints = listOf("en", "fr"))`. Setze `language = "en"`, wenn genau eine Sprache fest vorgegeben werden soll.
 
@@ -50,7 +50,7 @@ dependencies {
 val modelDir = ModelManager.ensureModels(context)
 
 val pipeline = SpeechPipeline(
-    SpeechConfig(modelDir = modelDir, useNnapi = true)
+    SpeechConfig(modelDir = modelDir, useNnapi = false)
 )
 
 pipeline.events.collect { event ->
@@ -169,12 +169,14 @@ Füge `app/src/main/res/xml/tts_engine.xml` hinzu:
 
 ## Leistung
 
-Gemessen auf Galaxy S23 Android, sofern nicht anders angegeben nur CPU. Niedrigeres RTF ist schneller.
+Gemessen auf einem Galaxy S23 Ultra (SM-S918B), sofern nicht anders angegeben nur CPU. RTF ist
+Wandzeit ÷ Dauer des ausgegebenen Audios: niedriger ist schneller, und <1,0 ist schneller als Echtzeit.
 
 | Modell | Aufgabe | RTF | Latenz | Spitzen-Speicher |
 | --- | --- | --- | --- | --- |
 | Parakeet-EOU 120M ONNX INT8 | Streaming-STT + EOU | 0,21 | Streaming-Teilergebnisse | 232 MB |
-| Kokoro 82M ONNX FP32 | TTS | 0,53 | satzweise | 640 MB |
+| Kokoro 82M vollständiger Graph (veröffentlicht, CPU mit zwei Threads) | TTS | 1,81 | satzweise | ~604 MB |
+| Kokoro 82M kurze Antwort (3,0-s-Graph, Standard) | TTS | 0,75–0,88 | begrenzte Antworten; sicherer Retry | ~527 MB |
 | Supertonic-3 LiteRT | TTS | 0,34 | ~1,1s TTFA | 832 MB |
 | Silero VAD v5 | VAD | <0,01 | <1ms pro 32ms-Block | <10 MB |
 

@@ -26,8 +26,6 @@ class DownloadProgressTest {
     private data class Sized(val name: String, val bytes: Long)
 
     private val MB = 1_000_000L
-    private val totalFiles = 18
-
     /** Default low-memory INT8 manifest order/sizes. */
     private val manifest = listOf(
         Sized("silero-vad.onnx", 2 * MB),                   // #1
@@ -37,18 +35,20 @@ class DownloadProgressTest {
         Sized("vocab.json", 1 * MB),                        // #5
         Sized("config.json", 1 * MB),                       // #6
         Sized("kokoro-e2e.onnx", 3 * MB),                   // #7
-        Sized("kokoro-e2e.onnx.data", 325 * MB),            // #8  <-- the giant
-        Sized("vocab_index.json", 1 * MB),                  // #9
-        Sized("us_gold.json", 2 * MB),                      // #10
-        Sized("us_silver.json", 4 * MB),                    // #11
-        Sized("dict_fr.json", 1 * MB),                      // #12
-        Sized("dict_es.json", 1 * MB),                      // #13
-        Sized("dict_it.json", 1 * MB),                      // #14
-        Sized("dict_pt.json", 1 * MB),                      // #15
-        Sized("dict_hi.json", 1 * MB),                      // #16
-        Sized("voices/af_heart.bin", 1 * MB),               // #17
-        Sized("deepfilter-auxiliary.bin", 2 * MB),          // #18
+        Sized("kokoro-e2e-realtime.onnx", 3 * MB),          // #8
+        Sized("kokoro-e2e.onnx.data", 325 * MB),            // #9  <-- the giant
+        Sized("vocab_index.json", 1 * MB),                  // #10
+        Sized("us_gold.json", 2 * MB),                      // #11
+        Sized("us_silver.json", 4 * MB),                    // #12
+        Sized("dict_fr.json", 1 * MB),                      // #13
+        Sized("dict_es.json", 1 * MB),                      // #14
+        Sized("dict_it.json", 1 * MB),                      // #15
+        Sized("dict_pt.json", 1 * MB),                      // #16
+        Sized("dict_hi.json", 1 * MB),                      // #17
+        Sized("voices/af_heart.bin", 1 * MB),               // #18
+        Sized("deepfilter-auxiliary.bin", 2 * MB),          // #19
     )
+    private val totalFiles = manifest.size
 
     private val CHUNK = 65536L
 
@@ -87,17 +87,17 @@ class DownloadProgressTest {
     @Test
     fun progressPercent_isByteAware_unitValues() {
         // Whole files done plus the fraction of the file in flight.
-        assertEquals(5, ModelDownloadWorker.progressPercent(1, 18, 0, 132 * MB))        // start of EOU encoder
-        assertEquals(8, ModelDownloadWorker.progressPercent(1, 18, 66 * MB, 132 * MB))  // half the EOU encoder
-        assertEquals(38, ModelDownloadWorker.progressPercent(7, 18, 0, 325 * MB))       // start of Kokoro weights
-        assertEquals(100, ModelDownloadWorker.progressPercent(18, 18, 0, 0))            // all files done
+        assertEquals(5, ModelDownloadWorker.progressPercent(1, 19, 0, 132 * MB))        // start of EOU encoder
+        assertEquals(7, ModelDownloadWorker.progressPercent(1, 19, 66 * MB, 132 * MB))  // half the EOU encoder
+        assertEquals(42, ModelDownloadWorker.progressPercent(8, 19, 0, 325 * MB))       // start of Kokoro weights
+        assertEquals(100, ModelDownloadWorker.progressPercent(19, 19, 0, 0))            // all files done
     }
 
     @Test
     fun progressPercent_unknownFileSize_fallsBackToFileCount() {
         // When the server doesn't advertise a length, the in-flight file adds
         // no fraction — degrades to the old whole-file value for that file only.
-        assertEquals(5, ModelDownloadWorker.progressPercent(1, 18, 12345, 0))
+        assertEquals(5, ModelDownloadWorker.progressPercent(1, 19, 12345, 0))
     }
 
     @Test
@@ -116,9 +116,9 @@ class DownloadProgressTest {
             "large file percent should advance through several values, got $distinct",
             distinct.size >= 6,
         )
-        // It spans roughly 38% -> 44% (one file's worth of the 18-file bar).
-        assertEquals("large file starts at ~38%", 38, largeFile.first().percent)
-        assertEquals("large file ends at ~44%", 44, largeFile.last().percent)
+        // It spans roughly 42% -> 47% (one file's worth of the 19-file bar).
+        assertEquals("large file starts at ~42%", 42, largeFile.first().percent)
+        assertEquals("large file ends at ~47%", 47, largeFile.last().percent)
         // ...and is monotonic non-decreasing within the file.
         assertTrue(
             "large file percent must never go backwards",
@@ -133,9 +133,9 @@ class DownloadProgressTest {
         val largeFile = simulate().filter { it.file == "kokoro-e2e.onnx.data" }
         val midpoint = largeFile.first { it.fileBytes >= it.fileTotal / 2 }
         assertTrue(
-            "halfway through the large file the bar should read >= 41 (was frozen at 38), " +
+            "halfway through the large file the bar should read >= 44 (was frozen at 42), " +
                 "was ${midpoint.percent}",
-            midpoint.percent >= 41,
+            midpoint.percent >= 44,
         )
     }
 

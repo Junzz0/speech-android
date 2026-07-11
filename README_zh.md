@@ -26,7 +26,7 @@
 
 模型在首次启动时通过 `ModelManager.ensureModels()` 自动下载。
 
-`SpeechConfig()` 默认使用 `SttModel.PARAKEET_EOU` 和 `TtsModel.KOKORO`,让 SDK 集成和系统识别服务走低内存 Android 路径。演示应用会选用 `SttModel.PARAKEET`,使回声和听写界面使用更大的 114 语言 TDT 模型。
+`SpeechConfig()` 默认使用 `SttModel.PARAKEET_EOU` 和 `TtsModel.KOKORO_SHORT_TURN`,让 SDK 集成和系统识别服务走低内存 Android 路径。演示应用会选用 `SttModel.PARAKEET`,使回声和听写界面使用更大的 114 语言 TDT 模型。
 
 需要聚焦特定语言时,使用 `SpeechConfig(sttModel = SttModel.PARAKEET, languageHints = listOf("en", "fr"))`。如果只想固定单一语言,设置 `language = "en"`。
 
@@ -50,7 +50,7 @@ dependencies {
 val modelDir = ModelManager.ensureModels(context)
 
 val pipeline = SpeechPipeline(
-    SpeechConfig(modelDir = modelDir, useNnapi = true)
+    SpeechConfig(modelDir = modelDir, useNnapi = false)
 )
 
 pipeline.events.collect { event ->
@@ -168,14 +168,13 @@ adb shell settings put secure voice_recognition_service \
 
 ## 性能
 
-在 Android 模拟器(arm64-v8a,无 NNAPI)上测量。真实硬件速度显著更快。
-
-在 Galaxy S23 Android 上测量,除非另有说明均为 CPU。RTF 越低越快。
+在 Galaxy S23 Ultra（SM-S918B）上测量，仅 CPU。RTF 为墙钟时间÷生成音频时长；数值越低越快，<1.0 表示快于实时。
 
 | 模型 | 任务 | RTF | 延迟 | 峰值内存 |
 | --- | --- | --- | --- | --- |
 | Parakeet-EOU 120M ONNX INT8 | 流式 STT + EOU | 0.21 | 流式 partials | 232 MB |
-| Kokoro 82M ONNX FP32 | TTS | 0.53 | 句级 | 640 MB |
+| Kokoro 82M 完整图（公开版，CPU 双线程） | TTS | 1.81 | 句级 | ~604 MB |
+| Kokoro 82M 短回合（3.0 秒图，默认） | TTS | 0.75–0.88 | 受限回复；安全重试 | ~527 MB |
 | Supertonic-3 LiteRT | TTS | 0.34 | ~1.1 秒 TTFA | 832 MB |
 | Silero VAD v5 | VAD | <0.01 | 每 32 毫秒块 <1 毫秒 | <10 MB |
 

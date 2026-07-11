@@ -26,7 +26,7 @@ Android के लिए ऑन-डिवाइस स्पीच SDK, [ONNX Ru
 
 मॉडल पहले लॉन्च पर `ModelManager.ensureModels()` के माध्यम से स्वचालित रूप से डाउनलोड होते हैं।
 
-`SpeechConfig()` डिफ़ॉल्ट रूप से `SttModel.PARAKEET_EOU` और `TtsModel.KOKORO` इस्तेमाल करता है, ताकि SDK इंटीग्रेशन और सिस्टम रिकग्नाइज़र कम-मेमोरी Android पथ पर रहें। डेमो ऐप `SttModel.PARAKEET` चुनता है, इसलिए इको और डिक्टेशन स्क्रीन बड़े 114-भाषा TDT मॉडल का उपयोग करती हैं।
+`SpeechConfig()` डिफ़ॉल्ट रूप से `SttModel.PARAKEET_EOU` और `TtsModel.KOKORO_SHORT_TURN` इस्तेमाल करता है, ताकि SDK इंटीग्रेशन और सिस्टम रिकग्नाइज़र कम-मेमोरी Android पथ पर रहें। डेमो ऐप `SttModel.PARAKEET` चुनता है, इसलिए इको और डिक्टेशन स्क्रीन बड़े 114-भाषा TDT मॉडल का उपयोग करती हैं।
 
 भाषा-केंद्रित रिकग्निशन के लिए `SpeechConfig(sttModel = SttModel.PARAKEET, languageHints = listOf("en", "fr"))` इस्तेमाल करें। केवल एक भाषा तय करनी हो तो `language = "en"` सेट करें।
 
@@ -50,7 +50,7 @@ dependencies {
 val modelDir = ModelManager.ensureModels(context)
 
 val pipeline = SpeechPipeline(
-    SpeechConfig(modelDir = modelDir, useNnapi = true)
+    SpeechConfig(modelDir = modelDir, useNnapi = false)
 )
 
 pipeline.events.collect { event ->
@@ -169,14 +169,13 @@ adb shell settings put secure voice_recognition_service \
 
 ## प्रदर्शन
 
-Android एमुलेटर (arm64-v8a, NNAPI के बिना) पर मापा गया। वास्तविक हार्डवेयर काफी तेज़ है।
-
-Galaxy S23 Android पर मापा गया, जब तक अलग से न कहा गया हो CPU-only। कम RTF तेज़ है।
+Galaxy S23 Ultra (SM-S918B) पर केवल CPU के साथ मापा गया। RTF = दीवार-समय ÷ जनरेट किए गए ऑडियो की अवधि; कम बेहतर है और <1.0 रीयल-टाइम से तेज़ है।
 
 | मॉडल | कार्य | RTF | लेटेंसी | पीक मेमोरी |
 | --- | --- | --- | --- | --- |
 | Parakeet-EOU 120M ONNX INT8 | स्ट्रीमिंग STT + EOU | 0.21 | streaming partials | 232 MB |
-| Kokoro 82M ONNX FP32 | TTS | 0.53 | वाक्य-स्तर | 640 MB |
+| Kokoro 82M पूर्ण ग्राफ़ (प्रकाशित, CPU के दो थ्रेड) | TTS | 1.81 | वाक्य-स्तर | ~604 MB |
+| Kokoro 82M छोटा टर्न (3.0 सेकंड ग्राफ़, डिफ़ॉल्ट) | TTS | 0.75–0.88 | सीमित उत्तर; सुरक्षित पुनःप्रयास | ~527 MB |
 | Supertonic-3 LiteRT | TTS | 0.34 | ~1.1 सेकंड TTFA | 832 MB |
 | Silero VAD v5 | VAD | <0.01 | हर 32 मिलीसेकंड चंक पर <1 मिलीसेकंड | <10 MB |
 
