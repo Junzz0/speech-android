@@ -47,6 +47,11 @@ struct PipelineHandle {
     std::unique_ptr<speech_core::DeepFilterEnhancer> enhancer;
     std::unique_ptr<speech_core::VoicePipeline> pipeline;
 
+    // Non-owning typed view of `stt` when the Parakeet-EOU streaming model is
+    // loaded. set_context_phrases() (contextual biasing) is model-specific, not
+    // on STTInterface, so nativeSetContextPhrases needs the concrete type.
+    speech_core::OnnxNemotronStreamingStt* eou_stt = nullptr;
+
     // Serializes nativePipelineSynthesize calls on the shared TTS instance.
     // In TranscribeOnly mode the pipeline itself never touches TTS, so this
     // only guards against concurrent Kotlin-side synthesize() calls.
@@ -222,7 +227,7 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
     jobjectArray languageHints,
     jobject callback,
     jboolean emitPartialTranscriptions, jfloat partialTranscriptionInterval,
-    jfloat endOfSpeechSilenceSec)
+    jfloat endOfSpeechSilenceSec, jint beamSize)
 {
     auto dir = jstring_to_string(env, modelDir);
     bool nnapi = useNnapi;
@@ -267,12 +272,19 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
                 h->stt = std::move(m);
             }
         } else if (sttModel == STT_PARAKEET_EOU) {
-            h->stt = std::make_unique<speech_core::OnnxNemotronStreamingStt>(
+            // beamSize > 1 enables modified beam search, which contextual
+            // biasing (nativeSetContextPhrases) rides on; <= 1 stays greedy.
+            // The wrapper self-configures the rest from config.json.
+            speech_core::OnnxNemotronStreamingStt::Config eou_cfg;
+            eou_cfg.beam_size = beamSize;
+            auto m = std::make_unique<speech_core::OnnxNemotronStreamingStt>(
                 dir + "/parakeet-eou-encoder.onnx",
                 dir + "/parakeet-eou-decoder.onnx",
                 dir + "/parakeet-eou-joint.onnx",
                 dir + "/vocab.json",
-                nnapi);
+                eou_cfg, nnapi);
+            h->eou_stt = m.get();
+            h->stt = std::move(m);
         } else {
             // Parakeet TDT autodetects its language — there is no forcing
             // mechanism (the transducer has no decoder prompt, and the
@@ -401,6 +413,21 @@ Java_audio_soniqo_speech_NativeBridge_nativeGetState(
     auto* h = reinterpret_cast<PipelineHandle*>(handle);
     if (!h || !h->pipeline) return 0;
     return static_cast<jint>(h->pipeline->state());
+}
+
+// Install contextual-biasing phrases on the Parakeet-EOU streaming STT. No-op
+// unless EOU is the active model and it was created with beamSize > 1. Call
+// between utterances (not mid-decode); rebuild per turn to inject the entities
+// currently on the device. An empty array clears biasing.
+JNIEXPORT void JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeSetContextPhrases(
+    JNIEnv* env, jobject /*thiz*/, jlong handle, jobjectArray phrases, jfloat maxBonus)
+{
+    auto* h = reinterpret_cast<PipelineHandle*>(handle);
+    if (!h || !h->eou_stt) return;
+    std::vector<std::string> ph = jstring_array_to_vector(env, phrases);
+    h->eou_stt->set_context_phrases(ph, /*per_char=*/1.5f, /*completion=*/3.0f,
+                                    /*max_bonus=*/maxBonus);
 }
 
 JNIEXPORT jlong JNICALL

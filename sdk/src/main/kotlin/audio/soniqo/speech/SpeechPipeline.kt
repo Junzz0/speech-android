@@ -46,6 +46,17 @@ interface SpeechPipeline : AutoCloseable {
     /** Signal that response playback finished — resume listening. */
     fun resumeListening()
 
+    /**
+     * Install contextual-biasing phrases for the Parakeet-EOU streaming STT
+     * (no-op for other models or when [SpeechConfig.beamSize] `<= 1`). Nudges
+     * recognition toward these surface phrases — command words, a brand name,
+     * the contact / track names currently on the device. Call between
+     * utterances and rebuild per turn to reflect live device state. [maxBonus]
+     * caps each phrase's boost so a long list can't override clear audio; an
+     * empty list clears biasing.
+     */
+    fun setContextPhrases(phrases: List<String>, maxBonus: Float = 6f) {}
+
     /** Sample rate of [synthesize] output, or 0 if unsupported. */
     val ttsSampleRate: Int get() = 0
 
@@ -107,6 +118,7 @@ internal class SpeechPipelineImpl(config: SpeechConfig) : SpeechPipeline {
         config.emitPartialTranscriptions,
         config.partialTranscriptionInterval,
         config.endOfSpeechSilenceSec,
+        config.beamSize,
     ).also { h ->
         if (h == 0L) throw IllegalStateException(
             "Failed to create native pipeline. Models may be corrupt — " +
@@ -134,6 +146,10 @@ internal class SpeechPipelineImpl(config: SpeechConfig) : SpeechPipeline {
 
     override fun resumeListening() {
         NativeBridge.nativeResumeListen(handle)
+    }
+
+    override fun setContextPhrases(phrases: List<String>, maxBonus: Float) {
+        NativeBridge.nativeSetContextPhrases(handle, phrases.toTypedArray(), maxBonus)
     }
 
     override val ttsSampleRate: Int

@@ -20,6 +20,7 @@ internal object NativeBridge {
         emitPartialTranscriptions: Boolean,
         partialTranscriptionInterval: Float,
         endOfSpeechSilenceSec: Float,  // seconds of silence ending an utterance
+        beamSize: Int,                 // Parakeet-EOU RNN-T beam width; <=1 = greedy
     ): Long
 
     external fun nativeNnapiFallbackReason(): String?
@@ -29,6 +30,10 @@ internal object NativeBridge {
     external fun nativePushAudio(handle: Long, samples: FloatArray, count: Int)
     external fun nativeResumeListen(handle: Long)
     external fun nativeGetState(handle: Long): Int
+
+    // Contextual biasing for the Parakeet-EOU streaming STT (no-op for other
+    // models or when beamSize <= 1). maxBonus caps each phrase's boost; 0 = off.
+    external fun nativeSetContextPhrases(handle: Long, phrases: Array<String>, maxBonus: Float)
 
     // Direct synthesis with the pipeline's already-loaded TTS model — lets a
     // TRANSCRIBE_ONLY agent loop speak responses without a second TTS copy.

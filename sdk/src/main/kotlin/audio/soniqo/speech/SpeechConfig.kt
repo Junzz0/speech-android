@@ -75,6 +75,12 @@ data class SpeechConfig(
      *  [language], and Parakeet TDT always autodetects. */
     val languageHints: List<String> = emptyList(),
 
+    /** RNN-T beam width for the Parakeet-EOU streaming STT. `<= 1` keeps the
+     *  greedy default; `> 1` enables modified beam search, which contextual
+     *  biasing ([SpeechPipeline.setContextPhrases]) rides on. Ignored by other
+     *  STT models. */
+    val beamSize: Int = 0,
+
     /** Seconds of detected silence that end an utterance. The 0.5 s default
      *  favors snappy short commands; raise it (0.8–1.2 s) when users pause
      *  mid-utterance — dictating digit sequences, thinking through a
