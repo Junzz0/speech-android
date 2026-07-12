@@ -52,9 +52,10 @@ data class SpeechConfig(
     /** Pipeline behavior after transcription. See [PipelineMode]. */
     val pipelineMode: PipelineMode = PipelineMode.ECHO,
 
-    /** Language/locale prompt for prompt-conditioned models and single-language
-     *  Parakeet TDT guidance: e.g. "en-US", "fr", "ja-JP". "auto" lets the
-     *  model decide, optionally constrained by [languageHints]. */
+    /** Language/locale for prompt-conditioned STT models (Nemotron) and TTS
+     *  voice selection: e.g. "en-US", "fr", "ja-JP". "auto" lets the model
+     *  decide. Parakeet TDT always autodetects — the transducer has no
+     *  forcing mechanism, matching every other Parakeet runtime. */
     val language: String = "auto",
 
     /** Enable noise cancellation (DeepFilterNet3). */
@@ -69,8 +70,20 @@ data class SpeechConfig(
     /** Interval between partial transcriptions in seconds. */
     val partialTranscriptionInterval: Float = 0.5f,
 
-    /** Optional language shortlist for Parakeet TDT language-token guidance.
-     *  Entries may be ISO codes or BCP-47 tags, e.g. listOf("en-US", "fr").
-     *  Ignored when [language] selects a concrete non-auto language. */
+    /** Reserved language shortlist for future prompt-conditioned backends.
+     *  No current STT backend consumes it: Nemotron takes a single
+     *  [language], and Parakeet TDT always autodetects. */
     val languageHints: List<String> = emptyList(),
+
+    /** RNN-T beam width for the Parakeet-EOU streaming STT. `<= 1` keeps the
+     *  greedy default; `> 1` enables modified beam search, which contextual
+     *  biasing ([SpeechPipeline.setContextPhrases]) rides on. Ignored by other
+     *  STT models. */
+    val beamSize: Int = 0,
+
+    /** Seconds of detected silence that end an utterance. The 0.5 s default
+     *  favors snappy short commands; raise it (0.8–1.2 s) when users pause
+     *  mid-utterance — dictating digit sequences, thinking through a
+     *  sentence — and get cut off early. */
+    val endOfSpeechSilenceSec: Float = 0.5f,
 )
