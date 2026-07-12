@@ -229,6 +229,7 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
     std::string suffix = useInt8 ? "-int8" : "";
     std::string lang = jstring_to_string(env, language);
     std::vector<std::string> lang_hints = jstring_array_to_vector(env, languageHints);
+    (void)lang_hints;  // reserved for prompt-conditioned backends; Parakeet autodetects
 
     auto h = std::make_unique<PipelineHandle>();
     env->GetJavaVM(&h->jvm);
@@ -273,16 +274,16 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
                 dir + "/vocab.json",
                 nnapi);
         } else {
+            // Parakeet TDT autodetects its language — there is no forcing
+            // mechanism (the transducer has no decoder prompt, and the
+            // published exports emit no language tokens to steer), matching
+            // every other Parakeet runtime. `language`/`languageHints`
+            // apply to Nemotron's prompt slot and TTS voice selection only.
             auto m = std::make_unique<speech_core::ParakeetStt>(
                 dir + "/parakeet-encoder" + suffix + ".onnx",
                 dir + "/parakeet-decoder-joint" + suffix + ".onnx",
                 dir + "/vocab.json",
                 nnapi);
-            if (lang != "auto" && !lang.empty()) {
-                m->set_language(lang);
-            } else if (!lang_hints.empty()) {
-                m->set_allowed_languages(lang_hints);
-            }
             h->stt = std::move(m);
         }
         // TTS — Kokoro (ONNX, 24 kHz) or Supertonic-3 (LiteRT flow-matching, 44.1 kHz, G2P-free).

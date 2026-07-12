@@ -14,8 +14,8 @@ internal object NativeBridge {
         sttBackend: Int,  // SttBackend.ordinal: 0=ONNX, 1=LITERT
         ttsModel: Int,    // 0=KOKORO, 1=SUPERTONIC, 2=KOKORO_SHORT_TURN
         pipelineMode: Int, // PipelineMode.ordinal: 0=ECHO, 1=TRANSCRIBE_ONLY
-        language: String, // single language hint ("auto", "en-US", ...)
-        languageHints: Array<String>, // shortlist for Parakeet TDT language-token guidance
+        language: String, // single language hint ("auto", "en-US", ...) — Nemotron prompt + TTS voice
+        languageHints: Array<String>, // reserved; no current backend consumes hints
         callback: EventCallback,
         emitPartialTranscriptions: Boolean,
         partialTranscriptionInterval: Float,
