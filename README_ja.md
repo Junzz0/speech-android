@@ -24,7 +24,7 @@
 | [Supertonic-3](https://soniqo.audio/ja/guides/supertonic) | テキスト読み上げ(LiteRT、flow-matching、G2P-free、44.1 kHz) | [~380 MB](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 MB | 31 |
 | [Silero VAD v5](https://soniqo.audio/ja/guides/vad/android) | 音声活動検出 | [2 MB](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | <10 MB | 任意 |
 | [DeepFilterNet3](https://soniqo.audio/ja/guides/denoise/android) | ノイズキャンセリング | [~8 MB](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | 既定では未ロード | 任意 |
-| [FunctionGemma 270M](https://soniqo.audio/ja/guides/functiongemma) | オンデバイス LLM — 構造化関数 / ツール呼び出し | [283 MB](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | アプリのランタイム次第 | EN チューニング |
+| [FunctionGemma 270M](https://soniqo.audio/ja/guides/function-calls) | オンデバイス LLM — 構造化関数 / ツール呼び出し | [283 MB](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | アプリのランタイム次第 | EN チューニング |
 
 モデルは初回起動時に `ModelManager.ensureModels()` 経由で自動ダウンロードされます。
 

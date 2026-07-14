@@ -24,7 +24,7 @@ Android के लिए ऑन-डिवाइस स्पीच SDK, [ONNX Ru
 | [Supertonic-3](https://soniqo.audio/hi/guides/supertonic) | टेक्स्ट-टू-स्पीच (LiteRT, फ़्लो-मैचिंग, G2P-free, 44.1 kHz) | [~380 MB](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 MB | 31 |
 | [Silero VAD v5](https://soniqo.audio/hi/guides/vad/android) | वॉयस एक्टिविटी डिटेक्शन | [2 MB](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | <10 MB | कोई भी |
 | [DeepFilterNet3](https://soniqo.audio/hi/guides/denoise/android) | शोर रद्दीकरण | [~8 MB](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | डिफ़ॉल्ट रूप से लोड नहीं | कोई भी |
-| [FunctionGemma 270M](https://soniqo.audio/hi/guides/functiongemma) | ऑन-डिवाइस LLM — संरचित फ़ंक्शन / टूल कॉल | [283 MB](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | ऐप runtime पर निर्भर | EN-tuned |
+| [FunctionGemma 270M](https://soniqo.audio/hi/guides/function-calls) | ऑन-डिवाइस LLM — संरचित फ़ंक्शन / टूल कॉल | [283 MB](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | ऐप runtime पर निर्भर | EN-tuned |
 
 मॉडल पहले लॉन्च पर `ModelManager.ensureModels()` के माध्यम से स्वचालित रूप से डाउनलोड होते हैं।
 
