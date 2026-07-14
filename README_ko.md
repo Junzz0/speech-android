@@ -6,6 +6,8 @@
 
 저메모리 스트리밍 음성 인식(기본 25개 언어, 114개 언어 TDT는 선택), 텍스트 음성 변환, 음성 활동 감지, 노이즈 캔슬링 — 모두 로컬에서 실행됩니다. 클라우드 API도, 디바이스 외부로 전송되는 데이터도 없습니다.
 
+**[📚 Android 문서](https://soniqo.audio/ko/getting-started/android)** · **[Kokoro TTS 가이드](https://soniqo.audio/ko/guides/kokoro/android)** · **[Parakeet TDT 가이드](https://soniqo.audio/ko/guides/parakeet/android)** · **[Silero VAD 가이드](https://soniqo.audio/ko/guides/vad/android)** · **[DeepFilterNet3 가이드](https://soniqo.audio/ko/guides/denoise/android)**
+
 **[데모 APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[모델](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)**(Apple 버전) · **[speech-core](https://github.com/soniqo/speech-core)**(파이프라인 엔진 + Linux/임베디드 빌드)
 
 ## 범위

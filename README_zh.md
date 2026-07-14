@@ -6,6 +6,8 @@
 
 低内存流式语音识别(默认 25 种语言,可选 114 语言 TDT)、文本转语音、语音活动检测和噪声消除——全部在本地运行。无需云端 API,数据不会离开设备。
 
+**[📚 Android 文档](https://soniqo.audio/zh/getting-started/android)** · **[Kokoro TTS 指南](https://soniqo.audio/zh/guides/kokoro/android)** · **[Parakeet TDT 指南](https://soniqo.audio/zh/guides/parakeet/android)** · **[Silero VAD 指南](https://soniqo.audio/zh/guides/vad/android)** · **[DeepFilterNet3 指南](https://soniqo.audio/zh/guides/denoise/android)**
+
 **[演示 APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[模型](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)**(Apple 对应版本)· **[speech-core](https://github.com/soniqo/speech-core)**(管线引擎 + Linux/嵌入式构建)
 
 ## 范围

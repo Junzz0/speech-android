@@ -6,6 +6,8 @@ SDK de voz no dispositivo para Android, baseado em [ONNX Runtime](https://onnxru
 
 Reconhecimento de fala em streaming com baixa memória (25 idiomas por padrão, TDT de 114 idiomas opcional), texto para fala, detecção de atividade vocal e cancelamento de ruído — tudo executado localmente. Sem APIs em nuvem, nenhum dado sai do dispositivo.
 
+**[📚 Documentação Android](https://soniqo.audio/pt/getting-started/android)** · **[Guia do Kokoro TTS](https://soniqo.audio/pt/guides/kokoro/android)** · **[Guia do Parakeet TDT](https://soniqo.audio/pt/guides/parakeet/android)** · **[Guia do Silero VAD](https://soniqo.audio/pt/guides/vad/android)** · **[Guia do DeepFilterNet3](https://soniqo.audio/pt/guides/denoise/android)**
+
 **[APK de demonstração](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[Modelos](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)** (contraparte Apple) · **[speech-core](https://github.com/soniqo/speech-core)** (motor de pipeline + build Linux/embarcado)
 
 ## Escopo

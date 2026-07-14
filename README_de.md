@@ -6,6 +6,8 @@ On-Device Speech-SDK für Android, basierend auf [ONNX Runtime](https://onnxrunt
 
 Speicherarme Streaming-Spracherkennung (standardmäßig 25 Sprachen, optionales TDT mit 114 Sprachen), Text-to-Speech, Sprachaktivitätserkennung und Rauschunterdrückung — alles lokal ausgeführt. Keine Cloud-APIs, keine Daten verlassen das Gerät.
 
+**[📚 Android-Dokumentation](https://soniqo.audio/de/getting-started/android)** · **[Kokoro-TTS-Leitfaden](https://soniqo.audio/de/guides/kokoro/android)** · **[Parakeet-TDT-Leitfaden](https://soniqo.audio/de/guides/parakeet/android)** · **[Silero-VAD-Leitfaden](https://soniqo.audio/de/guides/vad/android)** · **[DeepFilterNet3-Leitfaden](https://soniqo.audio/de/guides/denoise/android)**
+
 **[Demo-APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[Modelle](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)** (Apple-Pendant) · **[speech-core](https://github.com/soniqo/speech-core)** (Pipeline-Engine + Linux/Embedded-Build)
 
 ## Geltungsbereich

@@ -6,6 +6,8 @@
 
 Потоковое распознавание речи с низким потреблением памяти (25 языков по умолчанию, TDT на 114 языков опционально), синтез речи, определение голосовой активности и шумоподавление — всё работает локально. Никаких облачных API, никакие данные не покидают устройство.
 
+**[📚 Документация Android](https://soniqo.audio/ru/getting-started/android)** · **[Руководство по Kokoro TTS](https://soniqo.audio/ru/guides/kokoro/android)** · **[Руководство по Parakeet TDT](https://soniqo.audio/ru/guides/parakeet/android)** · **[Руководство по Silero VAD](https://soniqo.audio/ru/guides/vad/android)** · **[Руководство по DeepFilterNet3](https://soniqo.audio/ru/guides/denoise/android)**
+
 **[Демо APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[Модели](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)** (аналог для Apple) · **[speech-core](https://github.com/soniqo/speech-core)** (движок конвейера + сборка для Linux/встраиваемых систем)
 
 ## Область применения

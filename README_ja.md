@@ -6,6 +6,8 @@
 
 低メモリのストリーミング音声認識(既定 25 言語、114 言語 TDT は任意)、テキスト読み上げ、音声活動検出、ノイズキャンセリング — すべてローカルで動作。クラウド API 不要、データはデバイスから外に出ません。
 
+**[📚 Android ドキュメント](https://soniqo.audio/ja/getting-started/android)** · **[Kokoro TTS ガイド](https://soniqo.audio/ja/guides/kokoro/android)** · **[Parakeet TDT ガイド](https://soniqo.audio/ja/guides/parakeet/android)** · **[Silero VAD ガイド](https://soniqo.audio/ja/guides/vad/android)** · **[DeepFilterNet3 ガイド](https://soniqo.audio/ja/guides/denoise/android)**
+
 **[デモ APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[モデル](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)**(Apple 版)· **[speech-core](https://github.com/soniqo/speech-core)**(パイプラインエンジン + Linux/組み込みビルド)
 
 ## スコープ

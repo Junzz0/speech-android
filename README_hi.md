@@ -6,6 +6,8 @@ Android के लिए ऑन-डिवाइस स्पीच SDK, [ONNX Ru
 
 कम-मेमोरी स्ट्रीमिंग स्पीच रिकग्निशन (डिफ़ॉल्ट 25 भाषाएँ, 114-भाषा TDT वैकल्पिक), टेक्स्ट-टू-स्पीच, वॉयस एक्टिविटी डिटेक्शन, और शोर रद्दीकरण — सभी स्थानीय रूप से चलते हैं। कोई क्लाउड API नहीं, कोई डेटा डिवाइस से बाहर नहीं जाता।
 
+**[📚 Android दस्तावेज़](https://soniqo.audio/hi/getting-started/android)** · **[Kokoro TTS गाइड](https://soniqo.audio/hi/guides/kokoro/android)** · **[Parakeet TDT गाइड](https://soniqo.audio/hi/guides/parakeet/android)** · **[Silero VAD गाइड](https://soniqo.audio/hi/guides/vad/android)** · **[DeepFilterNet3 गाइड](https://soniqo.audio/hi/guides/denoise/android)**
+
 **[डेमो APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[मॉडल](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)** (Apple समकक्ष) · **[speech-core](https://github.com/soniqo/speech-core)** (पाइपलाइन इंजन + Linux/एम्बेडेड बिल्ड)
 
 ## स्कोप
