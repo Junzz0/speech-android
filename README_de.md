@@ -24,7 +24,7 @@ Dieses Repo ist das **Android-Packaging**: Kotlin-SDK, JNI-Bridge, Demo-App. Die
 | [Supertonic-3](https://soniqo.audio/de/guides/supertonic) | Text-to-Speech (LiteRT, Flow-Matching, G2P-frei, 44,1 kHz) | [~380 MB](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 MB | 31 |
 | [Silero VAD v5](https://soniqo.audio/de/guides/vad/android) | Sprachaktivitätserkennung | [2 MB](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | <10 MB | Beliebig |
 | [DeepFilterNet3](https://soniqo.audio/de/guides/denoise/android) | Rauschunterdrückung | [~8 MB](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | standardmäßig nicht geladen | Beliebig |
-| [FunctionGemma 270M](https://soniqo.audio/de/guides/functiongemma) | On-Device-LLM — strukturierte Funktions-/Tool-Aufrufe | [283 MB](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | abhängig vom App-Runtime | EN-getunt |
+| [FunctionGemma 270M](https://soniqo.audio/de/guides/function-calls) | On-Device-LLM — strukturierte Funktions-/Tool-Aufrufe | [283 MB](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | abhängig vom App-Runtime | EN-getunt |
 
 Modelle werden beim ersten Start automatisch über `ModelManager.ensureModels()` heruntergeladen.
 
