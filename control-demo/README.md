@@ -45,10 +45,10 @@ adb logcat -s SpeechControl | grep 'TURN'
 ./gradlew :control-demo:assembleDebug
 ```
 
-The adapter instrumentation suite expects the published base and adapter plus
-the compact held-out JSONL under the test app's internal `files/` directory;
-see `LiteRtLmLoraTest` for the exact filenames. It reports route accuracy,
-argument accuracy, engine load, mean, p50, p95, and maximum generation latency.
+The adapter instrumentation suite reuses the base and adapter downloaded by
+the demo. Push only the compact held-out JSONL to `files/compact-test.jsonl`;
+see `LiteRtLmLoraTest` for details. It reports route accuracy, argument
+accuracy, engine load, mean, p50, p95, and maximum generation latency.
 
 For representative latency, benchmark a release build on the target phone.
 Emulator CPU timings are useful for functional checks but do not represent a

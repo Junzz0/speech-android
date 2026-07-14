@@ -2,6 +2,8 @@ package audio.soniqo.speech.control
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import audio.soniqo.speech.LlmModel
+import audio.soniqo.speech.ModelManager
 import audio.soniqo.speech.llm.ArgumentValue
 import audio.soniqo.speech.llm.FunctionGemma
 import java.io.File
@@ -20,11 +22,12 @@ class LiteRtLmLoraTest {
     @Test
     fun compactHeldOutReportsQualityAndLatency() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val model = File(context.filesDir, "model-lora16-android.litertlm")
-        val adapter = File(context.filesDir, "control-r4-rank16.tflite")
+        val profile = LlmModel.FUNCTIONGEMMA_CONTROL_LORA
+        val model = File(ModelManager.llmModelFile(context, profile))
+        val adapter = File(requireNotNull(ModelManager.llmAdapterFile(context, profile)))
         val dataset = File(context.filesDir, "compact-test.jsonl")
-        require(model.isFile) { "Push the LoRA-enabled model to ${model.absolutePath}" }
-        require(adapter.isFile) { "Push the Control adapter to ${adapter.absolutePath}" }
+        require(model.isFile) { "Launch the demo to download ${model.absolutePath}" }
+        require(adapter.isFile) { "Launch the demo to download ${adapter.absolutePath}" }
         require(dataset.isFile) { "Push compact/test.jsonl to ${dataset.absolutePath}" }
 
         val runtime = LiteRtLmRuntime(model.absolutePath, adapter.absolutePath)
@@ -119,10 +122,11 @@ class LiteRtLmLoraTest {
     @Test
     fun compactControlAdapterGeneratesExpectedCalls() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val model = File(context.filesDir, "model-lora16-android.litertlm")
-        val adapter = File(context.filesDir, "control-r4-rank16.tflite")
-        require(model.isFile) { "Push the LoRA-enabled model to ${model.absolutePath}" }
-        require(adapter.isFile) { "Push the Control adapter to ${adapter.absolutePath}" }
+        val profile = LlmModel.FUNCTIONGEMMA_CONTROL_LORA
+        val model = File(ModelManager.llmModelFile(context, profile))
+        val adapter = File(requireNotNull(ModelManager.llmAdapterFile(context, profile)))
+        require(model.isFile) { "Launch the demo to download ${model.absolutePath}" }
+        require(adapter.isFile) { "Launch the demo to download ${adapter.absolutePath}" }
 
         val runtime = LiteRtLmRuntime(model.absolutePath, adapter.absolutePath)
         val loadMs = measureTimeMillis { runtime.initialize() }
