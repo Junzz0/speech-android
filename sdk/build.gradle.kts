@@ -67,7 +67,7 @@ mavenPublishing {
     pom {
         name.set("speech-android")
         description.set("On-device speech SDK for Android — VAD, STT, TTS, noise cancellation")
-        url.set("https://github.com/soniqo/speech-android")
+        url.set("https://soniqo.audio/getting-started/android")
         inceptionYear.set("2026")
 
         licenses {

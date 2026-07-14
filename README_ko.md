@@ -6,6 +6,8 @@
 
 저메모리 스트리밍 음성 인식(기본 25개 언어, 114개 언어 TDT는 선택), 텍스트 음성 변환, 음성 활동 감지, 노이즈 캔슬링 — 모두 로컬에서 실행됩니다. 클라우드 API도, 디바이스 외부로 전송되는 데이터도 없습니다.
 
+**[📚 Android 문서](https://soniqo.audio/ko/getting-started/android)**
+
 **[데모 APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[모델](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)**(Apple 버전) · **[speech-core](https://github.com/soniqo/speech-core)**(파이프라인 엔진 + Linux/임베디드 빌드)
 
 ## 범위
@@ -16,13 +18,13 @@
 
 | 모델 | 작업 | 다운로드 | 피크 메모리 | 언어 |
 | --- | --- | --- | --- | --- |
-| [Parakeet-EOU 120M](https://huggingface.co/soniqo/Parakeet-EOU-120M-ONNX-INT8) | 스트리밍 STT + EOU(기본) | 153 MB | 232 MB | 25 |
-| [Parakeet TDT v3](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | 광범위 STT(선택) | 891 MB | ~1.1-1.3 GB | 114 |
-| [Kokoro 82M](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | 텍스트 음성 변환(기본) | 330 MB | 640 MB | 8(en, fr, es, it, pt, hi, ja, zh) |
-| [Supertonic-3](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 텍스트 음성 변환(LiteRT, flow-matching, G2P-free, 44.1 kHz) | ~380 MB | 832 MB | 31 |
-| [Silero VAD v5](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | 음성 활동 감지 | 2 MB | <10 MB | 모든 언어 |
-| [DeepFilterNet3](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | 노이즈 캔슬링 | ~8 MB | 기본으로 로드하지 않음 | 모든 언어 |
-| [FunctionGemma 270M](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | 온디바이스 LLM — 구조화 함수 / 도구 호출 | 283 MB | 앱 런타임에 따라 다름 | EN 튜닝 |
+| [Parakeet-EOU 120M](https://soniqo.audio/ko/guides/dictate) | 스트리밍 STT + EOU(기본) | [153 MB](https://huggingface.co/soniqo/Parakeet-EOU-120M-ONNX-INT8) | 232 MB | 25 |
+| [Parakeet TDT v3](https://soniqo.audio/ko/guides/parakeet/android) | 광범위 STT(선택) | [891 MB](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | ~1.1-1.3 GB | 114 |
+| [Kokoro 82M](https://soniqo.audio/ko/guides/kokoro/android) | 텍스트 음성 변환(기본) | [330 MB](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | 640 MB | 8(en, fr, es, it, pt, hi, ja, zh) |
+| [Supertonic-3](https://soniqo.audio/ko/guides/supertonic) | 텍스트 음성 변환(LiteRT, flow-matching, G2P-free, 44.1 kHz) | [~380 MB](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 MB | 31 |
+| [Silero VAD v5](https://soniqo.audio/ko/guides/vad/android) | 음성 활동 감지 | [2 MB](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | <10 MB | 모든 언어 |
+| [DeepFilterNet3](https://soniqo.audio/ko/guides/denoise/android) | 노이즈 캔슬링 | [~8 MB](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | 기본으로 로드하지 않음 | 모든 언어 |
+| [FunctionGemma 270M](https://soniqo.audio/ko/guides/functiongemma) | 온디바이스 LLM — 구조화 함수 / 도구 호출 | [283 MB](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | 앱 런타임에 따라 다름 | EN 튜닝 |
 
 모델은 `ModelManager.ensureModels()`를 통해 첫 실행 시 자동으로 다운로드됩니다.
 

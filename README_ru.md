@@ -6,6 +6,8 @@
 
 Потоковое распознавание речи с низким потреблением памяти (25 языков по умолчанию, TDT на 114 языков опционально), синтез речи, определение голосовой активности и шумоподавление — всё работает локально. Никаких облачных API, никакие данные не покидают устройство.
 
+**[📚 Документация Android](https://soniqo.audio/ru/getting-started/android)**
+
 **[Демо APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[Модели](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)** (аналог для Apple) · **[speech-core](https://github.com/soniqo/speech-core)** (движок конвейера + сборка для Linux/встраиваемых систем)
 
 ## Область применения
@@ -16,13 +18,13 @@
 
 | Модель | Задача | Загрузка | Пиковая память | Языки |
 | --- | --- | --- | --- | --- |
-| [Parakeet-EOU 120M](https://huggingface.co/soniqo/Parakeet-EOU-120M-ONNX-INT8) | Потоковый STT + EOU (по умолчанию) | 153 МБ | 232 МБ | 25 |
-| [Parakeet TDT v3](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | STT с широким покрытием (опционально) | 891 МБ | ~1,1-1,3 ГБ | 114 |
-| [Kokoro 82M](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | Синтез речи (по умолчанию) | 330 МБ | 640 МБ | 8 (en, fr, es, it, pt, hi, ja, zh) |
-| [Supertonic-3](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | Синтез речи (LiteRT, flow-matching, G2P-free, 44,1 кГц) | ~380 МБ | 832 МБ | 31 |
-| [Silero VAD v5](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | Определение голосовой активности | 2 МБ | <10 МБ | Любой |
-| [DeepFilterNet3](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | Шумоподавление | ~8 МБ | по умолчанию не загружается | Любой |
-| [FunctionGemma 270M](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | Локальная LLM — структурированные вызовы функций / инструментов | 283 МБ | зависит от runtime приложения | EN-tuned |
+| [Parakeet-EOU 120M](https://soniqo.audio/ru/guides/dictate) | Потоковый STT + EOU (по умолчанию) | [153 МБ](https://huggingface.co/soniqo/Parakeet-EOU-120M-ONNX-INT8) | 232 МБ | 25 |
+| [Parakeet TDT v3](https://soniqo.audio/ru/guides/parakeet/android) | STT с широким покрытием (опционально) | [891 МБ](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | ~1,1-1,3 ГБ | 114 |
+| [Kokoro 82M](https://soniqo.audio/ru/guides/kokoro/android) | Синтез речи (по умолчанию) | [330 МБ](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | 640 МБ | 8 (en, fr, es, it, pt, hi, ja, zh) |
+| [Supertonic-3](https://soniqo.audio/ru/guides/supertonic) | Синтез речи (LiteRT, flow-matching, G2P-free, 44,1 кГц) | [~380 МБ](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 МБ | 31 |
+| [Silero VAD v5](https://soniqo.audio/ru/guides/vad/android) | Определение голосовой активности | [2 МБ](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | <10 МБ | Любой |
+| [DeepFilterNet3](https://soniqo.audio/ru/guides/denoise/android) | Шумоподавление | [~8 МБ](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | по умолчанию не загружается | Любой |
+| [FunctionGemma 270M](https://soniqo.audio/ru/guides/functiongemma) | Локальная LLM — структурированные вызовы функций / инструментов | [283 МБ](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | зависит от runtime приложения | EN-tuned |
 
 Модели загружаются автоматически при первом запуске через `ModelManager.ensureModels()`.
 
