@@ -69,6 +69,9 @@ class ModelDownloadWorker(
         val ttsModel = inputData.getString(KEY_TTS_MODEL)
             ?.let { runCatching { TtsModel.valueOf(it) }.getOrNull() }
             ?: TtsModel.KOKORO_SHORT_TURN
+        val llmModel = inputData.getString(KEY_LLM_MODEL)
+            ?.let { runCatching { LlmModel.valueOf(it) }.getOrNull() }
+            ?: LlmModel.FUNCTIONGEMMA
         // When set, the FunctionGemma bundle is downloaded here too, so the
         // whole ~800 MB setup runs in this foreground worker — surviving doze
         // and Wi-Fi power-save that would kill an in-app download.
@@ -120,7 +123,11 @@ class ModelDownloadWorker(
                 onProgress = report,
             )
             if (includeLlm) {
-                ModelManager.ensureLlmModels(applicationContext, onProgress = report)
+                ModelManager.ensureLlmModels(
+                    applicationContext,
+                    llmModel = llmModel,
+                    onProgress = report,
+                )
             }
             Result.success(workDataOf(KEY_MODEL_DIR to modelDir))
         } catch (e: IOException) {
@@ -201,6 +208,7 @@ class ModelDownloadWorker(
         const val KEY_STT_BACKEND = "sttBackend"
         const val KEY_TTS_MODEL = "ttsModel"
         const val KEY_INCLUDE_LLM = "includeLlm"
+        const val KEY_LLM_MODEL = "llmModel"
 
         // Output keys
         const val KEY_MODEL_DIR = "modelDir"
@@ -233,6 +241,7 @@ class ModelDownloadWorker(
             sttBackend: SttBackend = SttBackend.ONNX,
             ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
             includeLlm: Boolean = false,
+            llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
         ): String {
             if (
                 precision == ModelPrecision.INT8 &&
@@ -243,7 +252,11 @@ class ModelDownloadWorker(
             ) {
                 return UNIQUE_NAME
             }
-            val llm = if (includeLlm) ".llm" else ""
+            val llm = when {
+                !includeLlm -> ""
+                llmModel == LlmModel.FUNCTIONGEMMA -> ".llm"
+                else -> ".llm.${llmModel.name}"
+            }
             val ttsName = if (ttsModel.isKokoro) TtsModel.KOKORO.name else ttsModel.name
             return "$UNIQUE_NAME.${precision.name}.${sttModel.name}.${sttBackend.name}.$ttsName$llm"
         }
@@ -254,6 +267,7 @@ class ModelDownloadWorker(
             sttBackend: SttBackend = SttBackend.ONNX,
             ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
             includeLlm: Boolean = false,
+            llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
         ) =
             OneTimeWorkRequestBuilder<ModelDownloadWorker>()
                 .setInputData(workDataOf(
@@ -262,6 +276,7 @@ class ModelDownloadWorker(
                     KEY_STT_BACKEND to sttBackend.name,
                     KEY_TTS_MODEL to ttsModel.name,
                     KEY_INCLUDE_LLM to includeLlm,
+                    KEY_LLM_MODEL to llmModel.name,
                 ))
                 .build()
 
@@ -277,10 +292,25 @@ class ModelDownloadWorker(
             sttBackend: SttBackend = SttBackend.ONNX,
             ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
             includeLlm: Boolean = false,
+            llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
         ): java.util.UUID {
-            val req = request(precision, sttModel, sttBackend, ttsModel, includeLlm)
+            val req = request(
+                precision = precision,
+                sttModel = sttModel,
+                sttBackend = sttBackend,
+                ttsModel = ttsModel,
+                includeLlm = includeLlm,
+                llmModel = llmModel,
+            )
             WorkManager.getInstance(context).enqueueUniqueWork(
-                uniqueName(precision, sttModel, sttBackend, ttsModel, includeLlm),
+                uniqueName(
+                    precision = precision,
+                    sttModel = sttModel,
+                    sttBackend = sttBackend,
+                    ttsModel = ttsModel,
+                    includeLlm = includeLlm,
+                    llmModel = llmModel,
+                ),
                 ExistingWorkPolicy.KEEP, req,
             )
             return req.id

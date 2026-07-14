@@ -177,12 +177,42 @@ class ModelDownloadWorkerTest {
     }
 
     @Test
+    fun doWork_controlLoraInput_downloadsSelectedLlmProfile() = runBlocking {
+        coEvery {
+            ModelManager.ensureModels(any(), any(), any(), any(), any(), any())
+        } returns "/fake"
+        coEvery {
+            ModelManager.ensureLlmModels(any(), any(), any())
+        } returns "/fake/model-lora16-android.litertlm"
+
+        val worker = TestListenableWorkerBuilder<ModelDownloadWorker>(context)
+            .setInputData(workDataOf(
+                ModelDownloadWorker.KEY_INCLUDE_LLM to true,
+                ModelDownloadWorker.KEY_LLM_MODEL to
+                    LlmModel.FUNCTIONGEMMA_CONTROL_LORA.name,
+            ))
+            .build()
+
+        worker.doWork()
+
+        coVerify(exactly = 1) {
+            ModelManager.ensureLlmModels(
+                any(),
+                LlmModel.FUNCTIONGEMMA_CONTROL_LORA,
+                any(),
+            )
+        }
+    }
+
+    @Test
     fun request_buildsRequestWithModelInputDataAndNoNetworkConstraint() {
         val req = ModelDownloadWorker.request(
             precision = ModelPrecision.INT8,
             sttModel = SttModel.PARAKEET,
             sttBackend = SttBackend.ONNX,
             ttsModel = TtsModel.KOKORO,
+            includeLlm = true,
+            llmModel = LlmModel.FUNCTIONGEMMA_CONTROL_LORA,
         )
 
         assertEquals(
@@ -200,6 +230,11 @@ class ModelDownloadWorkerTest {
         assertEquals(
             "KOKORO",
             req.workSpec.input.getString(ModelDownloadWorker.KEY_TTS_MODEL),
+        )
+        assertTrue(req.workSpec.input.getBoolean(ModelDownloadWorker.KEY_INCLUDE_LLM, false))
+        assertEquals(
+            "FUNCTIONGEMMA_CONTROL_LORA",
+            req.workSpec.input.getString(ModelDownloadWorker.KEY_LLM_MODEL),
         )
         // No JobScheduler network constraint — the worker handles network
         // failures itself via IOException → retry. See KDoc on `request()`.
@@ -238,6 +273,13 @@ class ModelDownloadWorkerTest {
             ModelDownloadWorker.uniqueName(
                 precision = ModelPrecision.FP32,
                 sttModel = SttModel.PARAKEET,
+            ),
+        )
+        assertNotEquals(
+            ModelDownloadWorker.uniqueName(includeLlm = true),
+            ModelDownloadWorker.uniqueName(
+                includeLlm = true,
+                llmModel = LlmModel.FUNCTIONGEMMA_CONTROL_LORA,
             ),
         )
     }

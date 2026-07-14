@@ -142,12 +142,18 @@ object ModelManager {
         ).map { ModelFile("Supertonic-3-LiteRT", it) }
     }
 
-    // FunctionGemma 270M tool-calling LLM — a single .litertlm bundle for the
-    // LiteRT-LM runtime. Kept out of the pipeline model set: only agent demos
-    // opt in via [ensureLlmModels], so SDK integrations never pull the 283 MB.
-    private fun llmModels(): List<ModelFile> = listOf(
-        ModelFile("FunctionGemma-270M-LiteRT-LM", "model.litertlm"),
-    )
+    // FunctionGemma is kept out of the pipeline model set: only agent demos
+    // opt in via [ensureLlmModels]. The Control profile downloads one reusable
+    // LoRA-capable base and its small adapter as distinct files.
+    private fun llmModels(llmModel: LlmModel): List<ModelFile> = when (llmModel) {
+        LlmModel.FUNCTIONGEMMA -> listOf(
+            ModelFile("FunctionGemma-270M-LiteRT-LM", "model.litertlm"),
+        )
+        LlmModel.FUNCTIONGEMMA_CONTROL_LORA -> listOf(
+            ModelFile("FunctionGemma-270M-LiteRT-LM", "model-lora16-android.litertlm"),
+            ModelFile("FunctionGemma-270M-LiteRT-LM", "control-r4-rank16.tflite"),
+        )
+    }
 
     data class ModelFile(val repo: String, val filename: String)
 
@@ -229,16 +235,19 @@ object ModelManager {
      * True iff the LLM cache contains a valid FunctionGemma bundle.
      * Cheap and side-effect free — does not start a download.
      */
-    fun areLlmModelsReady(context: Context): Boolean {
-        val dir = File(context.filesDir, "models_llm")
+    fun areLlmModelsReady(
+        context: Context,
+        llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
+    ): Boolean {
+        val dir = File(llmModelDir(context, llmModel))
         if (!dir.exists()) return false
 
         val versionFile = File(dir, "version.txt")
         val cached = versionFile.takeIf { it.exists() }?.readText()?.trim()?.toIntOrNull() ?: 0
         if (cached < MODEL_VERSION) return false
-        if (cachedModelSet(dir) != llmModelSetKey()) return false
+        if (cachedModelSet(dir) != llmModelSetKey(llmModel)) return false
 
-        return llmModels().all { model ->
+        return llmModels(llmModel).all { model ->
             val dest = File(dir, model.filename)
             dest.exists() && isValidModel(dest, model.filename)
         }
@@ -253,12 +262,30 @@ object ModelManager {
         File(context.filesDir, "models_tts").absolutePath
 
     /** Path to the LLM model directory, without downloading. */
-    fun llmModelDir(context: Context): String =
-        File(context.filesDir, "models_llm").absolutePath
+    fun llmModelDir(
+        context: Context,
+        llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
+    ): String {
+        val name = when (llmModel) {
+            LlmModel.FUNCTIONGEMMA -> "models_llm"
+            LlmModel.FUNCTIONGEMMA_CONTROL_LORA -> "models_llm-control-lora"
+        }
+        return File(context.filesDir, name).absolutePath
+    }
 
     /** Absolute path of the FunctionGemma .litertlm bundle, without downloading. */
-    fun llmModelFile(context: Context): String =
-        File(llmModelDir(context), llmModels().first().filename).absolutePath
+    fun llmModelFile(
+        context: Context,
+        llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
+    ): String = File(
+        llmModelDir(context, llmModel),
+        llmModels(llmModel).first { it.filename.endsWith(".litertlm") }.filename,
+    ).absolutePath
+
+    /** Adapter path for LoRA profiles, or null for a standalone LLM bundle. */
+    fun llmAdapterFile(context: Context, llmModel: LlmModel): String? =
+        llmModels(llmModel).firstOrNull { it.filename.endsWith(".tflite") }
+            ?.let { File(llmModelDir(context, llmModel), it.filename).absolutePath }
 
     /** Returns the model directory path, downloading models if needed. */
     suspend fun ensureModels(
@@ -334,20 +361,21 @@ object ModelManager {
     }
 
     /**
-     * Returns the path of the FunctionGemma .litertlm bundle, downloading it
-     * if needed. Separate from [ensureModels] so the 283 MB LLM only lands on
-     * devices whose app actually runs the tool-calling agent.
+     * Returns the path of the selected FunctionGemma .litertlm base,
+     * downloading its complete artifact set if needed. Separate from
+     * [ensureModels] so LLM files only land on devices that run an agent.
      */
     suspend fun ensureLlmModels(
         context: Context,
+        llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
         onProgress: ((Progress) -> Unit)? = null,
     ): String = withContext(Dispatchers.IO) {
-        val dir = File(context.filesDir, "models_llm")
+        val dir = File(llmModelDir(context, llmModel))
         dir.mkdirs()
 
         val versionFile = File(dir, "version.txt")
         val setFile = File(dir, MODEL_SET_FILENAME)
-        val requestedModelSet = llmModelSetKey()
+        val requestedModelSet = llmModelSetKey(llmModel)
         val cached = versionFile.takeIf { it.exists() }?.readText()?.trim()?.toIntOrNull() ?: 0
         val cachedSet = cachedModelSet(dir)
 
@@ -368,9 +396,12 @@ object ModelManager {
         setFile.writeText(requestedModelSet)
         versionFile.writeText(MODEL_VERSION.toString())
 
-        downloadMissingModels(dir, llmModels(), onProgress)
+        downloadMissingModels(dir, llmModels(llmModel), onProgress)
 
-        File(dir, llmModels().first().filename).absolutePath
+        File(
+            dir,
+            llmModels(llmModel).first { it.filename.endsWith(".litertlm") }.filename,
+        ).absolutePath
     }
 
     private fun downloadMissingModels(
@@ -453,10 +484,10 @@ object ModelManager {
     private fun ttsCacheName(ttsModel: TtsModel): String =
         if (ttsModel.isKokoro) TtsModel.KOKORO.name else ttsModel.name
 
-    private fun llmModelSetKey(): String = listOf(
+    private fun llmModelSetKey(llmModel: LlmModel): String = listOf(
         "v$MODEL_VERSION",
         "profile=LLM",
-        "llm=FUNCTIONGEMMA_270M",
+        "llm=${llmModel.name}",
     ).joinToString("|")
 
     private fun cachedModelSet(dir: File): String? =
@@ -588,6 +619,8 @@ object ModelManager {
         "kokoro-e2e.onnx.data" to 50_000_000L,           // ~310 MB
         "silero-vad.onnx" to 500_000L,                   // ~2 MB
         "model.litertlm" to 200_000_000L,                // ~283 MB FunctionGemma bundle
+        "model-lora16-android.litertlm" to 300_000_000L, // ~327 MB LoRA-capable base
+        "control-r4-rank16.tflite" to 9_000_000L,        // ~9.5 MB Control adapter
     )
 
     private fun isValidModel(file: File, filename: String): Boolean {

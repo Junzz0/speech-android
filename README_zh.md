@@ -76,7 +76,7 @@ git clone --recursive https://github.com/soniqo/speech-android.git
 cd speech-android
 ./setup.sh
 ./gradlew :app:assembleDebug
-./gradlew :sdk:connectedAndroidTest   # 34 个端到端测试
+./gradlew :sdk:connectedAndroidTest   # 38 个端到端测试
 ```
 
 `./setup.sh` 会初始化 speech-core 子模块并将 ONNX Runtime 下载到 `./ort/`。
@@ -94,6 +94,17 @@ cd speech-android
 
 ```bash
 ./gradlew :app:installDebug
+```
+
+### 完整管线控制演示
+
+独立的 [`control-demo/`](control-demo/) 应用在本地运行完整智能体:
+Silero VAD → Parakeet-EOU STT → FunctionGemma 270M 工具调用 →
+Android 设备操作 → Kokoro TTS。它显示各阶段延迟,并直接链接此检出的
+`:sdk`,因此会使用本地语音优化。
+
+```bash
+./gradlew :control-demo:installDebug
 ```
 
 ## 系统语音输入(`RecognitionService`)

@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 rootProject.name = "speech-android"
 include(":sdk")
 include(":app")
+include(":control-demo")

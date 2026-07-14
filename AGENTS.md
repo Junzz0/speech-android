@@ -18,6 +18,7 @@ Linux/automotive support moved to [speech-core's `examples/linux/`](https://gith
 - `sdk/src/main/kotlin/audio/soniqo/speech/` — Kotlin public SDK
 - `sdk/src/androidTest/` — instrumented e2e tests
 - `app/` — demo application
+- `control-demo/` — separate full-pipeline voice-command demo (VAD → STT → FunctionGemma → Android tools → TTS)
 - `setup.sh` — downloads ONNX Runtime, initializes the speech-core submodule
 
 ## Build
@@ -25,6 +26,7 @@ Linux/automotive support moved to [speech-core's `examples/linux/`](https://gith
 ```bash
 ./setup.sh
 ./gradlew :app:assembleDebug
+./gradlew :control-demo:assembleDebug
 ./gradlew :sdk:connectedAndroidTest
 ```
 
@@ -34,6 +36,7 @@ Linux/automotive support moved to [speech-core's `examples/linux/`](https://gith
 
 ```bash
 ./gradlew :sdk:test
+./gradlew :control-demo:testDebugUnitTest
 ```
 
 Download retry / resume / timeout / validation / edge cases.
@@ -99,6 +102,12 @@ speech-core PR, then bump the submodule pointer here.
 - Kotlin SDK stays minimal — thin wrapper over JNI.
 - All model tensor names/shapes must match the published ONNX exports under `aufklarer/`.
 - Test on arm64-v8a (Snapdragon) as primary target.
+- Keep `control-demo` routing model-driven: do not add keyword/regex command
+  dispatch, and offer FunctionGemma only tools valid for the current device
+  state.
+- Keep `control-demo`'s `ControlTools` declarations and compact prompt in sync
+  with `speech-models/models/functiongemma/training` whenever the tool surface,
+  argument schema, prompt serialization, or state rules change.
 - **No Claude attribution** in commits, PRs, or model cards. Strip both the `🤖 Generated with [Claude Code]` footer and the `Co-Authored-By: Claude …` trailer from defaults.
 - **Never push directly to main — always use a PR**.
 - **Always ask for confirmation before creating a git commit**.

@@ -76,7 +76,7 @@ git clone --recursive https://github.com/soniqo/speech-android.git
 cd speech-android
 ./setup.sh
 ./gradlew :app:assembleDebug
-./gradlew :sdk:connectedAndroidTest   # 34 tests e2e
+./gradlew :sdk:connectedAndroidTest   # 38 tests e2e
 ```
 
 `./setup.sh` initialise le sous-module speech-core et télécharge ONNX Runtime
@@ -95,6 +95,18 @@ Le module [`app/`](app/) est une démo minimale d'assistant vocal avec :
 
 ```bash
 ./gradlew :app:installDebug
+```
+
+### Démo de contrôle du pipeline complet
+
+L'app séparée [`control-demo/`](control-demo/) exécute tout l'agent localement :
+Silero VAD → Parakeet-EOU STT → appels d'outils FunctionGemma 270M → actions sur
+l'appareil Android → Kokoro TTS. Elle affiche la latence de chaque étape et se
+lie directement au `:sdk` de ce checkout, afin d'utiliser les optimisations
+vocales locales.
+
+```bash
+./gradlew :control-demo:installDebug
 ```
 
 ## Entrée vocale système (`RecognitionService`)

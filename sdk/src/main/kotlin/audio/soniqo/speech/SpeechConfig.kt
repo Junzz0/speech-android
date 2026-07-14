@@ -21,6 +21,14 @@ enum class TtsModel(internal val nativeId: Int) {
     KOKORO_SHORT_TURN(2),
 }
 
+/** Optional on-device language-model bundle. [FUNCTIONGEMMA] is the original
+ *  standalone export. [FUNCTIONGEMMA_CONTROL_LORA] is the reusable
+ *  LoRA-enabled Android base plus the separately loaded Control adapter. */
+enum class LlmModel {
+    FUNCTIONGEMMA,
+    FUNCTIONGEMMA_CONTROL_LORA,
+}
+
 internal val TtsModel.isKokoro: Boolean
     get() = this == TtsModel.KOKORO || this == TtsModel.KOKORO_SHORT_TURN
 

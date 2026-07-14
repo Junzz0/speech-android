@@ -76,7 +76,7 @@ git clone --recursive https://github.com/soniqo/speech-android.git
 cd speech-android
 ./setup.sh
 ./gradlew :app:assembleDebug
-./gradlew :sdk:connectedAndroidTest   # 34 個の e2e テスト
+./gradlew :sdk:connectedAndroidTest   # 38 個の e2e テスト
 ```
 
 `./setup.sh` は speech-core サブモジュールを初期化し、ONNX Runtime を
@@ -95,6 +95,18 @@ cd speech-android
 
 ```bash
 ./gradlew :app:installDebug
+```
+
+### フルパイプライン制御デモ
+
+独立した [`control-demo/`](control-demo/) アプリは、Silero VAD →
+Parakeet-EOU STT → FunctionGemma 270M ツール呼び出し → Android
+デバイス操作 → Kokoro TTS というエージェント全体をローカルで実行します。
+各段階のレイテンシを表示し、このチェックアウトの `:sdk` に直接リンクするため、
+ローカルの音声最適化が使われます。
+
+```bash
+./gradlew :control-demo:installDebug
 ```
 
 ## システム音声入力(`RecognitionService`)

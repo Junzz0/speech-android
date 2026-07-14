@@ -119,3 +119,4 @@ fi
 echo ""
 echo "Done. Open the project in Android Studio or run:"
 echo "  ./gradlew :app:assembleDebug"
+echo "  ./gradlew :control-demo:assembleDebug"

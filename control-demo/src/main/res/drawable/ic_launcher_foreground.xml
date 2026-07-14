@@ -1,0 +1,17 @@
+<!-- Soniqo Control launcher mark: a warm, five-bar voice waveform. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:strokeColor="#F1862C" android:strokeWidth="8.5"
+        android:strokeLineCap="round" android:pathData="M34,46 L34,62" />
+    <path android:strokeColor="#F49B54" android:strokeWidth="8.5"
+        android:strokeLineCap="round" android:pathData="M44,38 L44,70" />
+    <path android:strokeColor="#F1862C" android:strokeWidth="8.5"
+        android:strokeLineCap="round" android:pathData="M54,28 L54,80" />
+    <path android:strokeColor="#F49B54" android:strokeWidth="8.5"
+        android:strokeLineCap="round" android:pathData="M64,38 L64,70" />
+    <path android:strokeColor="#F1862C" android:strokeWidth="8.5"
+        android:strokeLineCap="round" android:pathData="M74,46 L74,62" />
+</vector>

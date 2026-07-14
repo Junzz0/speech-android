@@ -1,0 +1,6 @@
+<resources>
+    <color name="asphalt">#17181C</color>
+    <!-- Launcher-icon card behind the soniqo mark — the logo's native
+         warm off-white, so the orange reads as the brand. -->
+    <color name="ic_launcher_background">#F7F4EF</color>
+</resources>

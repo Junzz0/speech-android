@@ -156,30 +156,56 @@ class ModelManagerManifestTest {
     }
 
     @Test
-    fun llmManifest_isSingleFunctionGemmaBundle() {
+    fun llmManifest_keepsStandaloneFunctionGemmaAsDefault() {
         assertEquals(
             listOf(ModelManager.ModelFile("FunctionGemma-270M-LiteRT-LM", "model.litertlm")),
-            llmModelFiles(),
+            llmModelFiles(LlmModel.FUNCTIONGEMMA),
+        )
+    }
+
+    @Test
+    fun controlLoraManifest_hasSeparateReusableBaseAndAdapter() {
+        assertEquals(
+            listOf(
+                ModelManager.ModelFile(
+                    "FunctionGemma-270M-LiteRT-LM",
+                    "model-lora16-android.litertlm",
+                ),
+                ModelManager.ModelFile(
+                    "FunctionGemma-270M-LiteRT-LM",
+                    "control-r4-rank16.tflite",
+                ),
+            ),
+            llmModelFiles(LlmModel.FUNCTIONGEMMA_CONTROL_LORA),
         )
     }
 
     @Test
     fun llmModelSetKey_isSeparateFromPipelineAndTtsCacheKeys() {
-        assertNotEquals(llmModelSetKey(), modelSetKey())
-        assertNotEquals(llmModelSetKey(), ttsModelSetKey(TtsModel.KOKORO))
+        val stock = llmModelSetKey(LlmModel.FUNCTIONGEMMA)
+        val control = llmModelSetKey(LlmModel.FUNCTIONGEMMA_CONTROL_LORA)
+        assertNotEquals(stock, modelSetKey())
+        assertNotEquals(stock, ttsModelSetKey(TtsModel.KOKORO))
+        assertNotEquals(stock, control)
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun llmModelFiles(): List<ModelManager.ModelFile> {
-        val method = ModelManager::class.java.getDeclaredMethod("llmModels")
+    private fun llmModelFiles(llmModel: LlmModel): List<ModelManager.ModelFile> {
+        val method = ModelManager::class.java.getDeclaredMethod(
+            "llmModels",
+            LlmModel::class.java,
+        )
         method.isAccessible = true
-        return method.invoke(ModelManager) as List<ModelManager.ModelFile>
+        return method.invoke(ModelManager, llmModel) as List<ModelManager.ModelFile>
     }
 
-    private fun llmModelSetKey(): String {
-        val method = ModelManager::class.java.getDeclaredMethod("llmModelSetKey")
+    private fun llmModelSetKey(llmModel: LlmModel): String {
+        val method = ModelManager::class.java.getDeclaredMethod(
+            "llmModelSetKey",
+            LlmModel::class.java,
+        )
         method.isAccessible = true
-        return method.invoke(ModelManager) as String
+        return method.invoke(ModelManager, llmModel) as String
     }
 
     @Suppress("UNCHECKED_CAST")
