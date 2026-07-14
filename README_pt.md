@@ -6,7 +6,7 @@ SDK de voz no dispositivo para Android, baseado em [ONNX Runtime](https://onnxru
 
 Reconhecimento de fala em streaming com baixa memória (25 idiomas por padrão, TDT de 114 idiomas opcional), texto para fala, detecção de atividade vocal e cancelamento de ruído — tudo executado localmente. Sem APIs em nuvem, nenhum dado sai do dispositivo.
 
-**[📚 Documentação Android](https://soniqo.audio/pt/getting-started/android)** · **[Guia do Kokoro TTS](https://soniqo.audio/pt/guides/kokoro/android)** · **[Guia do Parakeet TDT](https://soniqo.audio/pt/guides/parakeet/android)** · **[Guia do Silero VAD](https://soniqo.audio/pt/guides/vad/android)** · **[Guia do DeepFilterNet3](https://soniqo.audio/pt/guides/denoise/android)**
+**[📚 Documentação Android](https://soniqo.audio/pt/getting-started/android)**
 
 **[APK de demonstração](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[Modelos](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)** (contraparte Apple) · **[speech-core](https://github.com/soniqo/speech-core)** (motor de pipeline + build Linux/embarcado)
 
@@ -18,13 +18,13 @@ Este repositório é o **empacotamento Android**: SDK Kotlin, ponte JNI, app de 
 
 | Modelo | Tarefa | Download | Pico de memória | Idiomas |
 | --- | --- | --- | --- | --- |
-| [Parakeet-EOU 120M](https://huggingface.co/soniqo/Parakeet-EOU-120M-ONNX-INT8) | STT em streaming + EOU (padrão) | 153 MB | 232 MB | 25 |
-| [Parakeet TDT v3](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | STT de ampla cobertura (opcional) | 891 MB | ~1,1-1,3 GB | 114 |
-| [Kokoro 82M](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | Texto para fala (padrão) | 330 MB | 640 MB | 8 (en, fr, es, it, pt, hi, ja, zh) |
-| [Supertonic-3](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | Texto para fala (LiteRT, flow-matching, G2P-free, 44,1 kHz) | ~380 MB | 832 MB | 31 |
-| [Silero VAD v5](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | Detecção de atividade vocal | 2 MB | <10 MB | Qualquer |
-| [DeepFilterNet3](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | Cancelamento de ruído | ~8 MB | não carregado por padrão | Qualquer |
-| [FunctionGemma 270M](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | LLM no dispositivo — chamadas estruturadas de função / ferramenta | 283 MB | depende do runtime do app | Ajustado para EN |
+| [Parakeet-EOU 120M](https://soniqo.audio/pt/guides/dictate) | STT em streaming + EOU (padrão) | [153 MB](https://huggingface.co/soniqo/Parakeet-EOU-120M-ONNX-INT8) | 232 MB | 25 |
+| [Parakeet TDT v3](https://soniqo.audio/pt/guides/parakeet/android) | STT de ampla cobertura (opcional) | [891 MB](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | ~1,1-1,3 GB | 114 |
+| [Kokoro 82M](https://soniqo.audio/pt/guides/kokoro/android) | Texto para fala (padrão) | [330 MB](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | 640 MB | 8 (en, fr, es, it, pt, hi, ja, zh) |
+| [Supertonic-3](https://soniqo.audio/pt/guides/supertonic) | Texto para fala (LiteRT, flow-matching, G2P-free, 44,1 kHz) | [~380 MB](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 MB | 31 |
+| [Silero VAD v5](https://soniqo.audio/pt/guides/vad/android) | Detecção de atividade vocal | [2 MB](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | <10 MB | Qualquer |
+| [DeepFilterNet3](https://soniqo.audio/pt/guides/denoise/android) | Cancelamento de ruído | [~8 MB](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | não carregado por padrão | Qualquer |
+| [FunctionGemma 270M](https://soniqo.audio/pt/guides/functiongemma) | LLM no dispositivo — chamadas estruturadas de função / ferramenta | [283 MB](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | depende do runtime do app | Ajustado para EN |
 
 Os modelos são baixados automaticamente no primeiro lançamento via `ModelManager.ensureModels()`.
 

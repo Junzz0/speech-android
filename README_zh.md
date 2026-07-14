@@ -6,7 +6,7 @@
 
 低内存流式语音识别(默认 25 种语言,可选 114 语言 TDT)、文本转语音、语音活动检测和噪声消除——全部在本地运行。无需云端 API,数据不会离开设备。
 
-**[📚 Android 文档](https://soniqo.audio/zh/getting-started/android)** · **[Kokoro TTS 指南](https://soniqo.audio/zh/guides/kokoro/android)** · **[Parakeet TDT 指南](https://soniqo.audio/zh/guides/parakeet/android)** · **[Silero VAD 指南](https://soniqo.audio/zh/guides/vad/android)** · **[DeepFilterNet3 指南](https://soniqo.audio/zh/guides/denoise/android)**
+**[📚 Android 文档](https://soniqo.audio/zh/getting-started/android)**
 
 **[演示 APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[模型](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)**(Apple 对应版本)· **[speech-core](https://github.com/soniqo/speech-core)**(管线引擎 + Linux/嵌入式构建)
 
@@ -18,13 +18,13 @@
 
 | 模型 | 任务 | 下载大小 | 峰值内存 | 语言 |
 | --- | --- | --- | --- | --- |
-| [Parakeet-EOU 120M](https://huggingface.co/soniqo/Parakeet-EOU-120M-ONNX-INT8) | 流式 STT + 端点检测(默认) | 153 MB | 232 MB | 25 |
-| [Parakeet TDT v3](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | 广覆盖 STT(可选) | 891 MB | ~1.1-1.3 GB | 114 |
-| [Kokoro 82M](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | 文本转语音(默认) | 330 MB | 640 MB | 8(en、fr、es、it、pt、hi、ja、zh) |
-| [Supertonic-3](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 文本转语音(LiteRT、流匹配、免 G2P、44.1 kHz) | ~380 MB | 832 MB | 31 |
-| [Silero VAD v5](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | 语音活动检测 | 2 MB | <10 MB | 任意 |
-| [DeepFilterNet3](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | 噪声消除 | ~8 MB | 默认不加载 | 任意 |
-| [FunctionGemma 270M](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | 端侧 LLM — 结构化函数 / 工具调用 | 283 MB | 取决于应用运行时 | EN 调优 |
+| [Parakeet-EOU 120M](https://soniqo.audio/zh/guides/dictate) | 流式 STT + 端点检测(默认) | [153 MB](https://huggingface.co/soniqo/Parakeet-EOU-120M-ONNX-INT8) | 232 MB | 25 |
+| [Parakeet TDT v3](https://soniqo.audio/zh/guides/parakeet/android) | 广覆盖 STT(可选) | [891 MB](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | ~1.1-1.3 GB | 114 |
+| [Kokoro 82M](https://soniqo.audio/zh/guides/kokoro/android) | 文本转语音(默认) | [330 MB](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | 640 MB | 8(en、fr、es、it、pt、hi、ja、zh) |
+| [Supertonic-3](https://soniqo.audio/zh/guides/supertonic) | 文本转语音(LiteRT、流匹配、免 G2P、44.1 kHz) | [~380 MB](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 MB | 31 |
+| [Silero VAD v5](https://soniqo.audio/zh/guides/vad/android) | 语音活动检测 | [2 MB](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | <10 MB | 任意 |
+| [DeepFilterNet3](https://soniqo.audio/zh/guides/denoise/android) | 噪声消除 | [~8 MB](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | 默认不加载 | 任意 |
+| [FunctionGemma 270M](https://soniqo.audio/zh/guides/functiongemma) | 端侧 LLM — 结构化函数 / 工具调用 | [283 MB](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | 取决于应用运行时 | EN 调优 |
 
 模型在首次启动时通过 `ModelManager.ensureModels()` 自动下载。
 

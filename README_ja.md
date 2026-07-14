@@ -6,7 +6,7 @@
 
 低メモリのストリーミング音声認識(既定 25 言語、114 言語 TDT は任意)、テキスト読み上げ、音声活動検出、ノイズキャンセリング — すべてローカルで動作。クラウド API 不要、データはデバイスから外に出ません。
 
-**[📚 Android ドキュメント](https://soniqo.audio/ja/getting-started/android)** · **[Kokoro TTS ガイド](https://soniqo.audio/ja/guides/kokoro/android)** · **[Parakeet TDT ガイド](https://soniqo.audio/ja/guides/parakeet/android)** · **[Silero VAD ガイド](https://soniqo.audio/ja/guides/vad/android)** · **[DeepFilterNet3 ガイド](https://soniqo.audio/ja/guides/denoise/android)**
+**[📚 Android ドキュメント](https://soniqo.audio/ja/getting-started/android)**
 
 **[デモ APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[モデル](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)**(Apple 版)· **[speech-core](https://github.com/soniqo/speech-core)**(パイプラインエンジン + Linux/組み込みビルド)
 
@@ -18,13 +18,13 @@
 
 | モデル | タスク | ダウンロード | ピークメモリ | 言語 |
 | --- | --- | --- | --- | --- |
-| [Parakeet-EOU 120M](https://huggingface.co/soniqo/Parakeet-EOU-120M-ONNX-INT8) | ストリーミング STT + EOU(既定) | 153 MB | 232 MB | 25 |
-| [Parakeet TDT v3](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | 広範囲 STT(任意) | 891 MB | ~1.1-1.3 GB | 114 |
-| [Kokoro 82M](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | テキスト読み上げ(既定) | 330 MB | 640 MB | 8(en、fr、es、it、pt、hi、ja、zh) |
-| [Supertonic-3](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | テキスト読み上げ(LiteRT、flow-matching、G2P-free、44.1 kHz) | ~380 MB | 832 MB | 31 |
-| [Silero VAD v5](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | 音声活動検出 | 2 MB | <10 MB | 任意 |
-| [DeepFilterNet3](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | ノイズキャンセリング | ~8 MB | 既定では未ロード | 任意 |
-| [FunctionGemma 270M](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | オンデバイス LLM — 構造化関数 / ツール呼び出し | 283 MB | アプリのランタイム次第 | EN チューニング |
+| [Parakeet-EOU 120M](https://soniqo.audio/ja/guides/dictate) | ストリーミング STT + EOU(既定) | [153 MB](https://huggingface.co/soniqo/Parakeet-EOU-120M-ONNX-INT8) | 232 MB | 25 |
+| [Parakeet TDT v3](https://soniqo.audio/ja/guides/parakeet/android) | 広範囲 STT(任意) | [891 MB](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | ~1.1-1.3 GB | 114 |
+| [Kokoro 82M](https://soniqo.audio/ja/guides/kokoro/android) | テキスト読み上げ(既定) | [330 MB](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | 640 MB | 8(en、fr、es、it、pt、hi、ja、zh) |
+| [Supertonic-3](https://soniqo.audio/ja/guides/supertonic) | テキスト読み上げ(LiteRT、flow-matching、G2P-free、44.1 kHz) | [~380 MB](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 MB | 31 |
+| [Silero VAD v5](https://soniqo.audio/ja/guides/vad/android) | 音声活動検出 | [2 MB](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | <10 MB | 任意 |
+| [DeepFilterNet3](https://soniqo.audio/ja/guides/denoise/android) | ノイズキャンセリング | [~8 MB](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | 既定では未ロード | 任意 |
+| [FunctionGemma 270M](https://soniqo.audio/ja/guides/functiongemma) | オンデバイス LLM — 構造化関数 / ツール呼び出し | [283 MB](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | アプリのランタイム次第 | EN チューニング |
 
 モデルは初回起動時に `ModelManager.ensureModels()` 経由で自動ダウンロードされます。
 
