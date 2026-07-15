@@ -3,13 +3,12 @@ package audio.soniqo.speech.control
 import audio.soniqo.speech.llm.FunctionDeclaration
 
 /**
- * Compact FunctionGemma prompt for adapters fine-tuned on the compact style
- * (`speech-models/models/functiongemma/training/data/compact`): the developer
- * turn carries the FunctionGemma trigger, the state-filtered function names,
- * and the music state — no full schema declarations. The schemas are trained
- * into the weights, so this prompt must stay byte-identical to the training
- * serialization in `generate_dataset.py` (`compact_developer_turn`), rendered
- * through the same Gemma turn structure the SDK uses for the canonical path.
+ * Compact FunctionGemma prompt for the published Control adapter: the
+ * developer turn carries the FunctionGemma trigger, the state-filtered
+ * function names, and the music state — no full schema declarations. The
+ * schemas are trained into the weights, so this prompt must stay compatible
+ * with the adapter's compact training serialization and use the same Gemma
+ * turn structure as the SDK's canonical path.
  *
  * This demo always pairs the compact prompt with the published Control LoRA.
  */

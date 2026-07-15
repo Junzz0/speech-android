@@ -10,7 +10,14 @@ package audio.soniqo.speech.control
  * for playback latency, the core one is for the model's output capacity.
  */
 object SpeechChunks {
-    private const val MAX_CHARS = 90
+    // Kokoro's 120-frame Android graph is non-streaming per inference. A
+    // large first piece therefore blocks playback until the whole piece has
+    // synthesized, and 30+ phoneme-token clauses can overflow the graph's
+    // guarded output budget and trigger expensive split/retry inference.
+    // Keep app-side pieces clause-sized so the first sound needs one bounded
+    // model run and the following piece can synthesize during playback.
+    private const val MAX_CHARS = 30
+    private const val MIN_CHARS = 10
 
     fun split(text: String, maxChars: Int = MAX_CHARS): List<String> {
         val out = mutableListOf<String>()
@@ -53,8 +60,16 @@ object SpeechChunks {
             )
             // Keep the delimiter with the leading piece; require enough text
             // before it that tiny fragments never reach the synthesizer.
-            val cut = if (clauseCut >= 20) clauseCut + 1
+            var cut = if (clauseCut >= 20) clauseCut + 1
             else window.lastIndexOf(' ').coerceAtLeast(1)
+
+            // Rebalance a tiny final tail by moving the last word from the
+            // leading piece. Small standalone prompts pay the same fixed
+            // graph cost and are the least reliable Kokoro inputs.
+            if (rest.substring(cut).trim().length < MIN_CHARS) {
+                val earlierWord = rest.lastIndexOf(' ', cut - 1)
+                if (earlierWord >= MIN_CHARS) cut = earlierWord
+            }
             out.add(rest.substring(0, cut).trim())
             rest = rest.substring(cut).trim()
         }

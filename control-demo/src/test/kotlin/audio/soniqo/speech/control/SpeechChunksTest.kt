@@ -24,9 +24,10 @@ class SpeechChunksTest {
         val pieces = SpeechChunks.split(ControlTools.CAPABILITIES_SUMMARY)
         assertTrue("expected 2+ pieces, got $pieces", pieces.size >= 2)
         for (piece in pieces) {
-            assertTrue("piece too long: $piece", piece.length <= 90)
+            assertTrue("piece too long: $piece", piece.length <= 30)
             assertTrue("piece too short: $piece", piece.length >= 10)
         }
+        assertEquals("I can call your contacts,", pieces.first())
         assertEquals(
             ControlTools.CAPABILITIES_SUMMARY.replace(" ", ""),
             pieces.joinToString("").replace(" ", ""),
@@ -39,6 +40,14 @@ class SpeechChunksTest {
             "Hotel California, Morning Drive by The Layers."
         val pieces = SpeechChunks.split(reply)
         assertTrue(pieces.size >= 2)
-        for (piece in pieces) assertTrue(piece.length <= 90)
+        for (piece in pieces) assertTrue(piece.length <= 30)
+    }
+
+    @Test
+    fun tinyTailMovesAWordFromPreviousPiece() {
+        assertEquals(
+            listOf("Playing Over the Horizon", "by Samsung."),
+            SpeechChunks.split("Playing Over the Horizon by Samsung."),
+        )
     }
 }

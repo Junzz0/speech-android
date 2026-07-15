@@ -2,19 +2,16 @@
 
 This separate application runs a complete on-device voice agent:
 
-`Silero VAD → Parakeet-EOU STT → FunctionGemma 270M → Android action → Kokoro TTS`
+`Silero VAD → Parakeet-EOU STT → FunctionGemma 270M → Android action → Pocket TTS`
 
-It links directly to this checkout's `:sdk` module, so SDK and Kokoro changes
+It links directly to this checkout's `:sdk` module, so SDK and Pocket changes
 are exercised without publishing an intermediate artifact. On first launch it
 downloads the public speech models plus two separate FunctionGemma artifacts:
 the reusable 327.4 MB Android LoRA base and the 9.5 MB Control adapter. It then
 operates without a network connection.
 
-The Control-specific FunctionGemma datasets, LoRA runner, evaluator, and
-experiment notes live in
-[`speech-models/models/functiongemma/training`](https://github.com/soniqo/speech-models/tree/main/models/functiongemma/training).
-The app always pairs the adapter with the compact prompt serialization used for
-training. The exact base and adapter files are published under
+The app always pairs the adapter with its compact prompt serialization. The
+exact base and adapter files are published under
 [`soniqo/FunctionGemma-270M-LiteRT-LM`](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM).
 
 ## Run
@@ -30,7 +27,7 @@ Grant microphone access in the app, tap the orb, and try commands such as
 "set volume to three" or "what can you do?" Contact and media commands also
 need their corresponding Android permissions.
 
-The footer shows STT, LLM, Kokoro first-audio, round-trip, and memory metrics.
+The footer shows STT, LLM, Pocket first-audio, round-trip, and memory metrics.
 The same data is available for device benchmarks with:
 
 ```bash

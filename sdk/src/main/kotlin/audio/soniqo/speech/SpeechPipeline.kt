@@ -69,6 +69,20 @@ interface SpeechPipeline : AutoCloseable {
     fun synthesize(text: String, language: String = "en"): SpeechSynthesisResult =
         throw UnsupportedOperationException("This SpeechPipeline does not support direct synthesis")
 
+    /**
+     * Synthesize [text] and deliver each safe native model chunk as soon as it
+     * is available. The call is blocking; invoke it off the main thread. The
+     * default preserves compatibility with custom pipelines by emitting one
+     * buffered result.
+     */
+    fun synthesizeStreaming(
+        text: String,
+        language: String = "en",
+        onChunk: (result: SpeechSynthesisResult, isFinal: Boolean) -> Unit,
+    ) {
+        onChunk(synthesize(text, language), true)
+    }
+
     /** Cancel an in-progress [synthesize]. */
     fun cancelSynthesis() {}
 
@@ -160,6 +174,23 @@ internal class SpeechPipelineImpl(config: SpeechConfig) : SpeechPipeline {
         return SpeechSynthesisResult(
             sampleRate = ttsSampleRate,
             pcm16 = NativeBridge.nativePipelineSynthesize(handle, text, language),
+        )
+    }
+
+    override fun synthesizeStreaming(
+        text: String,
+        language: String,
+        onChunk: (result: SpeechSynthesisResult, isFinal: Boolean) -> Unit,
+    ) {
+        check(handle != 0L) { "SpeechPipeline is closed" }
+        val sampleRate = ttsSampleRate
+        NativeBridge.nativePipelineSynthesizeStreaming(
+            handle,
+            text,
+            language,
+            NativeBridge.SynthesisCallback { audio, isFinal ->
+                onChunk(SpeechSynthesisResult(sampleRate, audio), isFinal)
+            },
         )
     }
 

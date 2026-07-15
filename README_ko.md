@@ -12,7 +12,7 @@
 
 ## 범위
 
-이 저장소는 **Android 패키징**입니다: Kotlin SDK, JNI 브리지, 데모 앱. C++ 엔진과 ONNX 모델 래퍼(Silero VAD, Parakeet STT, Kokoro TTS, DeepFilterNet3)는 [speech-core](https://github.com/soniqo/speech-core)에 있으며 git 서브모듈을 통해 가져옵니다. Linux / 자동차(Yocto, Qualcomm SA8295P/SA8255P)는 [speech-core/examples/linux](https://github.com/soniqo/speech-core/tree/main/examples/linux)에 있습니다.
+이 저장소는 **Android 패키징**입니다: Kotlin SDK, JNI 브리지, 데모 앱. C++ 엔진과 ONNX 모델 래퍼(Silero VAD, Parakeet STT, Kokoro/Pocket TTS, DeepFilterNet3)는 [speech-core](https://github.com/soniqo/speech-core)에 있으며 git 서브모듈을 통해 가져옵니다. Linux / 자동차(Yocto, Qualcomm SA8295P/SA8255P)는 [speech-core/examples/linux](https://github.com/soniqo/speech-core/tree/main/examples/linux)에 있습니다.
 
 ## 모델
 
@@ -21,6 +21,7 @@
 | [Parakeet-EOU 120M](https://soniqo.audio/ko/guides/dictate) | 스트리밍 STT + EOU(기본) | [153 MB](https://huggingface.co/soniqo/Parakeet-EOU-120M-ONNX-INT8) | 232 MB | 25 |
 | [Parakeet TDT v3](https://soniqo.audio/ko/guides/parakeet/android) | 광범위 STT(선택) | [891 MB](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | ~1.1-1.3 GB | 114 |
 | [Kokoro 82M](https://soniqo.audio/ko/guides/kokoro/android) | 텍스트 음성 변환(기본) | [330 MB](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | 640 MB | 8(en, fr, es, it, pt, hi, ja, zh) |
+| [Pocket TTS 100M](https://huggingface.co/soniqo/Pocket-TTS-100M-ONNX-INT8) | 스트리밍 음성 합성(선택, 고정 Alba 음성) | ~126 MB | 미측정 | 영어 |
 | [Supertonic-3](https://soniqo.audio/ko/guides/supertonic) | 텍스트 음성 변환(LiteRT, flow-matching, G2P-free, 44.1 kHz) | [~380 MB](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 MB | 31 |
 | [Silero VAD v5](https://soniqo.audio/ko/guides/vad/android) | 음성 활동 감지 | [2 MB](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | <10 MB | 모든 언어 |
 | [DeepFilterNet3](https://soniqo.audio/ko/guides/denoise/android) | 노이즈 캔슬링 | [~8 MB](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | 기본으로 로드하지 않음 | 모든 언어 |
@@ -101,7 +102,7 @@ cd speech-android
 
 별도의 [`control-demo/`](control-demo/) 앱은 Silero VAD →
 Parakeet-EOU STT → FunctionGemma 270M 도구 호출 → Android 기기 동작 →
-Kokoro TTS로 이어지는 전체 에이전트를 로컬에서 실행합니다. 단계별 지연 시간을
+Pocket TTS로 이어지는 전체 에이전트를 로컬에서 실행합니다. 단계별 지연 시간을
 표시하고 이 체크아웃의 `:sdk`에 직접 연결하므로 로컬 음성 최적화를 사용합니다.
 
 ```bash
@@ -215,7 +216,8 @@ Idle → Listening → Transcribing → Speaking → Idle
 │  ┌──────────────────────────────────────┐    │
 │  │  speech_core_models (git submodule)  │    │
 │  │   SileroVad / ParakeetStt /          │    │
-│  │   KokoroTts / DeepFilterEnhancer     │    │
+│  │   KokoroTts / OnnxPocketTts /        │    │
+│  │   DeepFilterEnhancer                  │    │
 │  │            │                         │    │
 │  │            ▼                         │    │
 │  │  speech_core  (orchestration:        │    │

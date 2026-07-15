@@ -39,7 +39,7 @@ android {
 }
 
 dependencies {
-    // Use this checkout directly so speech, including Kokoro optimizations,
+    // Use this checkout directly so speech, including Pocket streaming,
     // is always exercised through the local SDK under development.
     implementation(project(":sdk"))
 

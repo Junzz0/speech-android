@@ -140,10 +140,8 @@ object ControlTools {
 
     /** Spoken by list_capabilities — the executor states the real surface,
      *  the model's `say` is ignored (it tends to under- or over-promise). */
-    // Longer than the Kokoro export's single-call 5 s output budget on
-    // purpose: speech-core synthesizes long text in sentence chunks
-    // (speech-core#104), and this string exercises that path on every
-    // "what can you do".
+    // Deliberately long enough to exercise multi-frame streaming on every
+    // "what can you do" response.
     const val CAPABILITIES_SUMMARY =
         "I can call your contacts, dial numbers, look up phone numbers, " +
         "play or stop music, and set the volume — all offline, on this device."

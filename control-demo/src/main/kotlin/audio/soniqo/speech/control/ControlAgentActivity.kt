@@ -10,12 +10,12 @@ import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
-import android.media.AudioTrack
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.ContactsContract
 import android.provider.MediaStore
 import android.util.Log
@@ -33,7 +33,9 @@ import audio.soniqo.speech.PipelineMode
 import audio.soniqo.speech.SpeechConfig
 import audio.soniqo.speech.SpeechEvent
 import audio.soniqo.speech.SpeechPipeline
+import audio.soniqo.speech.SpeechSynthesisResult
 import audio.soniqo.speech.SttModel
+import audio.soniqo.speech.TtsModel
 import audio.soniqo.speech.control.ui.ControlActions
 import audio.soniqo.speech.control.ui.ControlScreen
 import audio.soniqo.speech.control.ui.SoniqoControlTheme
@@ -41,10 +43,11 @@ import audio.soniqo.speech.llm.FunctionGemma
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -55,8 +58,8 @@ import kotlinx.coroutines.withContext
  * voice agent on-device: one pipeline, three memory budgets":
  *
  *   Silero VAD → Parakeet-EOU 120M (TRANSCRIBE_ONLY) → FunctionGemma 270M
- *   (LiteRT-LM) → device tool (dial / contacts / music / volume) → Kokoro
- *   speaks the model-authored `say` argument.
+ *   (LiteRT-LM) → device tool (dial / contacts / music / volume) → Pocket
+ *   TTS streams the model-authored `say` argument.
  *
  * The UI is Jetpack Compose ([ControlScreen]) subscribing to a single
  * [ControlStore] state flow; this Activity owns the pipeline and pushes
@@ -70,7 +73,8 @@ class ControlAgentActivity : ComponentActivity() {
     private var llmRuntime: LiteRtLmRuntime? = null
     private var functionGemma: FunctionGemma? = null
     private var audioRecord: AudioRecord? = null
-    private var audioTrack: AudioTrack? = null
+    private val speechPlayerLock = Any()
+    @Volatile private var speechPlayer: StreamingPcmPlayer? = null
     private var mediaPlayer: MediaPlayer? = null
 
     @Volatile private var recording = false
@@ -106,7 +110,7 @@ class ControlAgentActivity : ComponentActivity() {
 
     private fun activeStt(): SttModel =
         sttOverride?.let { runCatching { SttModel.valueOf(it) }.getOrNull() } ?: DEMO_STT
-    // Drives the Kokoro voice (and Nemotron's prompt slot if ever selected).
+    // Drives the TTS language (and Nemotron's prompt slot if ever selected).
     // Parakeet STT autodetects regardless — like every other Parakeet
     // runtime, there is no language forcing, so accented speech can
     // occasionally decode into a non-Latin script on the multilingual TDT.
@@ -147,6 +151,9 @@ class ControlAgentActivity : ComponentActivity() {
         // ~891 MB download and ~2 GB total, which is ~5× slower under
         // emulation and needs a real device with an NPU to feel good.
         private val DEMO_STT = SttModel.PARAKEET_EOU
+        // Pocket is a recurrent ONNX model that emits real 80 ms frames. Keep
+        // Kokoro available through the SDK for multilingual/voice selection.
+        private val DEMO_TTS = TtsModel.POCKET
 
         // Parakeet-EOU RNN-T decode width. > 1 enables beam search, which
         // contextual biasing (buildContextPhrases) rides on. Truncation seen in
@@ -232,6 +239,7 @@ class ControlAgentActivity : ComponentActivity() {
     /** Friendly stage name for a model file, so the status reads "downloading
      *  transcription model" instead of "downloading parakeet-eou-encoder.onnx". */
     private fun modelLabel(file: String): String = when {
+        file.startsWith("pocket_tts/") -> "speech synthesis"
         file.startsWith("silero") -> "voice detection"
         file.startsWith("parakeet") || file == "vocab.json" || file == "config.json" ||
             file == "encoder.onnx" || file == "decoder.onnx" || file == "joint.onnx" ||
@@ -266,6 +274,7 @@ class ControlAgentActivity : ComponentActivity() {
             applicationContext,
             ModelPrecision.INT8,
             sttModel = activeStt(),
+            ttsModel = DEMO_TTS,
             includeLlm = true,
             llmModel = LlmModel.FUNCTIONGEMMA_CONTROL_LORA,
         )
@@ -275,6 +284,7 @@ class ControlAgentActivity : ComponentActivity() {
             .getWorkInfosForUniqueWorkLiveData(
                 ModelDownloadWorker.uniqueName(
                     sttModel = activeStt(),
+                    ttsModel = DEMO_TTS,
                     includeLlm = true,
                     llmModel = LlmModel.FUNCTIONGEMMA_CONTROL_LORA,
                 ))
@@ -318,6 +328,7 @@ class ControlAgentActivity : ComponentActivity() {
                     modelDir = modelDir,
                     useNnapi = !isEmulator,
                     sttModel = activeStt(),
+                    ttsModel = DEMO_TTS,
                     pipelineMode = PipelineMode.TRANSCRIBE_ONLY,
                     emitPartialTranscriptions = true,
                     language = activeLanguage(),
@@ -330,6 +341,14 @@ class ControlAgentActivity : ComponentActivity() {
                 ))
                 pipeline = p
                 bench("pipeline loaded")
+
+                // Samsung takes roughly 225 ms to allocate its AudioTrack.
+                // Pay that once while models are loading, then retain the
+                // stream across turns so it is never on the TTFA path.
+                if (DEMO_TTS == TtsModel.POCKET) {
+                    acquireSpeechPlayer(p.ttsSampleRate)
+                    bench("speech output ready")
+                }
 
                 launch { p.events.collect { onSpeechEvent(it) } }
                 p.start()
@@ -507,44 +526,113 @@ class ControlAgentActivity : ComponentActivity() {
         store.setMic(MicState.SPEAKING)
         store.setStatus("speaking")
         micPaused = true
-        // Pipelined speech: play piece N while synthesizing piece N+1, so
-        // the first sound lands after one short synthesis instead of after
-        // the whole reply. ttsMs reports time to first audio; ttsAudioSec
-        // totals every piece.
-        val pieces = SpeechChunks.split(spoken)
-        val ttsStart = System.currentTimeMillis()
-        var firstSoundMs = 0L
+        // Pocket is genuinely recurrent, so send it the whole response and
+        // play its 80 ms callbacks through one continuous AudioTrack. Kokoro
+        // retains bounded app-side splitting for its fixed output graph.
+        val pieces = if (DEMO_TTS == TtsModel.POCKET) listOf(spoken) else SpeechChunks.split(spoken)
+        val ttsStartWallMs = System.currentTimeMillis()
+        val ttsStartNanos = SystemClock.elapsedRealtimeNanos()
+        val firstChunkMs = AtomicLong(0)
+        val firstPresentationMs = AtomicLong(0)
+        var playbackStartMs = 0L
         var audioSecTotal = 0f
+        var nativeChunks = 0
+        var playbackUnderruns = 0
+        var playbackPerformanceMode = -1
+        var playbackBufferBytes = 0
+
+        fun publishFirstAudioMetrics(ttsMs: Long) {
+            val roundMs = (ttsStartWallMs - turnAnchorMs + ttsMs).coerceAtLeast(ttsMs)
+            val metrics = TurnMetrics(
+                sttMs = sttMs, speechSec = speechSec,
+                llmMs = llmMs, llmChars = rawLength,
+                ttsMs = ttsMs, ttsAudioSec = 0f,
+                actionMs = actionMs, roundMs = roundMs,
+                memMb = memory.currentMb(),
+            )
+            store.updateTurn(turnId) { it.copy(metrics = metrics) }
+            store.setLastMetrics(metrics)
+            store.setMemory(memory.currentMb(), memory.peakMb)
+            Log.i(TAG, "TURN ${metrics.format()}")
+        }
+
         try {
             kotlinx.coroutines.coroutineScope {
-                var current = p.synthesize(pieces.first(), "en")
-                for (index in pieces.indices) {
-                    val following = if (index + 1 < pieces.size) {
-                        val nextText = pieces[index + 1]
-                        async(Dispatchers.Default) { p.synthesize(nextText, "en") }
-                    } else null
-
-                    if (firstSoundMs == 0L) {
-                        firstSoundMs = System.currentTimeMillis() - ttsStart
-                        val roundMs = System.currentTimeMillis() - turnAnchorMs
-                        val metrics = TurnMetrics(
-                            sttMs = sttMs, speechSec = speechSec,
-                            llmMs = llmMs, llmChars = rawLength,
-                            ttsMs = firstSoundMs, ttsAudioSec = 0f,
-                            actionMs = actionMs, roundMs = roundMs,
-                            memMb = memory.currentMb(),
-                        )
-                        store.updateTurn(turnId) { it.copy(metrics = metrics) }
-                        store.setLastMetrics(metrics)
-                        store.setMemory(memory.currentMb(), memory.peakMb)
-                        Log.i(TAG, "TURN ${metrics.format()}")
+                val audio = Channel<SpeechSynthesisResult>(Channel.UNLIMITED)
+                val producer = launch(Dispatchers.Default) {
+                    try {
+                        for (piece in pieces) {
+                            p.synthesizeStreaming(piece, "en") { chunk, _ ->
+                                // Pocket terminates with an empty final callback;
+                                // it is control flow, not an audio frame.
+                                if (chunk.pcm16.isNotEmpty()) {
+                                    firstChunkMs.compareAndSet(
+                                        0,
+                                        (SystemClock.elapsedRealtimeNanos() - ttsStartNanos) /
+                                            1_000_000,
+                                    )
+                                    check(audio.trySend(chunk).isSuccess) {
+                                        "TTS playback channel closed"
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: Throwable) {
+                        audio.close(e)
+                        throw e
+                    } finally {
+                        audio.close()
                     }
-                    val sec = current.pcm16.size / 2f / current.sampleRate
-                    audioSecTotal += sec
-                    playPcm(current.pcm16, current.sampleRate)
-                    delay((sec * 1000).toLong() + 150)
-                    stopPlayback()
-                    current = following?.await() ?: break
+                }
+                var playbackCompleted = false
+                try {
+                    var player: StreamingPcmPlayer? = null
+                    var presentationWatcher: kotlinx.coroutines.Job? = null
+                    for (current in audio) {
+                        nativeChunks++
+                        val sec = current.pcm16.size / 2f / current.sampleRate
+                        audioSecTotal += sec
+                        val active = player
+                        if (active == null) {
+                            val created = acquireSpeechPlayer(current.sampleRate)
+                            player = created
+                            created.start(current.pcm16)
+                            playbackStartMs =
+                                (SystemClock.elapsedRealtimeNanos() - ttsStartNanos) / 1_000_000
+                            playbackPerformanceMode = created.performanceMode
+                            playbackBufferBytes = created.bufferSizeBytes
+                            publishFirstAudioMetrics(playbackStartMs)
+                            presentationWatcher = launch(Dispatchers.Default) {
+                                created.awaitFirstPresentationNanos()?.let { presentedNanos ->
+                                    val presentedMs = ((presentedNanos - ttsStartNanos) / 1_000_000)
+                                        .coerceAtLeast(playbackStartMs)
+                                    firstPresentationMs.set(presentedMs)
+                                    publishFirstAudioMetrics(presentedMs)
+                                    Log.i(
+                                        TAG,
+                                        "tts first-presentation ${presentedMs}ms " +
+                                            "(model callback ${firstChunkMs.get()}ms)",
+                                    )
+                                }
+                            }
+                        } else {
+                            check(active.sampleRate == current.sampleRate) {
+                                "TTS sample rate changed mid-turn: " +
+                                    "${active.sampleRate} -> ${current.sampleRate}"
+                            }
+                            active.write(current.pcm16)
+                        }
+                    }
+                    producer.join()
+                    val active = player ?: error("TTS completed without audio")
+                    active.awaitDrained()
+                    presentationWatcher?.join()
+                    playbackUnderruns = active.underrunCount
+                    active.resetForNextUtterance()
+                    playbackCompleted = true
+                } finally {
+                    if (producer.isActive) p.cancelSynthesis()
+                    if (!playbackCompleted) stopPlayback()
                 }
             }
         } catch (e: Exception) {
@@ -552,8 +640,16 @@ class ControlAgentActivity : ComponentActivity() {
             store.addNote("tts error: ${e.message}")
             micPaused = false; returnToRest(); return
         }
-        Log.i(TAG, "tts first-sound ${firstSoundMs}ms · pieces=${pieces.size} " +
-            "· audio ${"%.1f".format(audioSecTotal)}s · " +
+        val presentedMs = firstPresentationMs.get().takeIf { it > 0 } ?: playbackStartMs
+        val perf = if (playbackPerformanceMode == android.media.AudioTrack.PERFORMANCE_MODE_LOW_LATENCY) {
+            "low-latency"
+        } else {
+            "normal"
+        }
+        Log.i(TAG, "tts model-callback ${firstChunkMs.get()}ms · playback-start ${playbackStartMs}ms " +
+            "· first-presentation ${presentedMs}ms · app-pieces=${pieces.size} " +
+            "· native-frames=$nativeChunks · audio ${"%.1f".format(audioSecTotal)}s " +
+            "· output=$perf buffer=$playbackBufferBytes underruns=$playbackUnderruns · " +
             "round ${System.currentTimeMillis() - turnAnchorMs}ms total")
         micPaused = false
         returnToRest()
@@ -729,47 +825,20 @@ class ControlAgentActivity : ComponentActivity() {
     // Audio out (agent speech)
     // -----------------------------------------------------------------------
 
-    private fun playPcm(pcm: ByteArray, sampleRate: Int) {
-        stopPlayback()
-        val lead = sampleRate * 80 / 1000
-        val fadeIn = sampleRate * 5 / 1000
-        val fadeOut = sampleRate * 10 / 1000
-        val samples = pcm.size / 2
-        val out = ByteArray((lead + samples) * 2)
-        val src = java.nio.ByteBuffer.wrap(pcm).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-        val dst = java.nio.ByteBuffer.wrap(out).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-        dst.position(lead * 2)
-        val fadeOutStart = (samples - fadeOut).coerceAtLeast(0)
-        for (i in 0 until samples) {
-            val s = src.short.toInt()
-            val gain = when {
-                i < fadeIn -> i.toFloat() / fadeIn
-                i >= fadeOutStart -> (samples - i).toFloat() / fadeOut
-                else -> 1f
-            }
-            dst.putShort((s * gain).toInt().toShort())
+    private fun acquireSpeechPlayer(sampleRate: Int): StreamingPcmPlayer =
+        synchronized(speechPlayerLock) {
+            speechPlayer?.also {
+                check(it.sampleRate == sampleRate) {
+                    "TTS sample rate changed: ${it.sampleRate} -> $sampleRate"
+                }
+            } ?: StreamingPcmPlayer(sampleRate).also { speechPlayer = it }
         }
-        val track = AudioTrack.Builder()
-            .setAudioAttributes(AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ASSISTANT)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-            .setAudioFormat(AudioFormat.Builder()
-                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                .setSampleRate(sampleRate)
-                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
-            .setTransferMode(AudioTrack.MODE_STATIC)
-            .setBufferSizeInBytes(out.size).build()
-        track.write(out, 0, out.size)
-        track.play()
-        audioTrack = track
-    }
 
     private fun stopPlayback() {
-        audioTrack?.let { track ->
-            audioTrack = null
-            try { track.stop() } catch (_: Exception) {}
-            track.release()
-        }
+        val player = synchronized(speechPlayerLock) {
+            speechPlayer.also { speechPlayer = null }
+        } ?: return
+        player.close()
     }
 
     // -----------------------------------------------------------------------

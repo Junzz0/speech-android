@@ -5,6 +5,7 @@
 #include <speech_core/models/kokoro_tts.h>
 #include <speech_core/models/onnx_engine.h>
 #include <speech_core/models/onnx_nemotron_streaming_stt.h>
+#include <speech_core/models/onnx_pocket_tts.h>
 #include <speech_core/models/parakeet_stt.h>
 #include <speech_core/models/nemotron_multilingual_stt.h>
 #include <speech_core/models/silero_vad.h>
@@ -43,7 +44,7 @@
 struct PipelineHandle {
     std::unique_ptr<speech_core::SileroVad> vad;
     std::unique_ptr<speech_core::STTInterface> stt;  // Parakeet-EOU, Parakeet TDT, or Nemotron
-    std::unique_ptr<speech_core::TTSInterface> tts;  // Kokoro (ONNX) or Supertonic (LiteRT)
+    std::unique_ptr<speech_core::TTSInterface> tts;  // Kokoro/Pocket (ONNX) or Supertonic (LiteRT)
     std::unique_ptr<speech_core::DeepFilterEnhancer> enhancer;
     std::unique_ptr<speech_core::VoicePipeline> pipeline;
 
@@ -77,6 +78,7 @@ static constexpr int TTS_SUPERTONIC = 1;
 static constexpr int MODE_ECHO = 0;
 static constexpr int MODE_TRANSCRIBE_ONLY = 1;
 static constexpr int TTS_KOKORO_SHORT_TURN = 2;
+static constexpr int TTS_POCKET = 3;
 
 static std::unique_ptr<speech_core::TTSInterface> create_tts(
     const std::string& dir, bool nnapi, int ttsModel)
@@ -104,6 +106,19 @@ static std::unique_ptr<speech_core::TTSInterface> create_tts(
             dir + "/voices",
             dir,
             nnapi);
+    }
+
+    if (ttsModel == TTS_POCKET) {
+        // The public recurrent graphs are CPU-oriented. Two ORT threads and
+        // four flow steps are the quality/latency profile validated on the
+        // Galaxy S23 Ultra. Pocket assets are namespaced because both the STT
+        // and TTS bundles publish a file named vocab.json.
+        speech_core::PocketTtsConfig config;
+        config.intra_threads = 2;
+        config.flow_steps = 4;
+        config.hardware_acceleration = false;
+        return std::make_unique<speech_core::OnnxPocketTts>(
+            dir + "/pocket_tts", config);
     }
 
     return std::make_unique<speech_core::KokoroTts>(
@@ -523,6 +538,83 @@ static jbyteArray synthesize_pcm16(JNIEnv* env, speech_core::TTSInterface& tts,
     return out;
 }
 
+// Synthesize synchronously while forwarding each safe native model chunk to
+// Kotlin. speech-core invokes the callback before starting the next chunk, so
+// callers can begin playback while the following inference is still running.
+static void synthesize_streaming_pcm16(
+    JNIEnv* env, speech_core::TTSInterface& tts, std::mutex& mutex,
+    jstring text, jstring language, jobject callback)
+{
+    if (!callback) {
+        jclass ex_cls = env->FindClass("java/lang/IllegalArgumentException");
+        if (ex_cls) env->ThrowNew(ex_cls, "Synthesis callback must not be null");
+        return;
+    }
+
+    jclass callback_cls = env->GetObjectClass(callback);
+    if (!callback_cls) return;
+    jmethodID on_chunk = env->GetMethodID(callback_cls, "onChunk", "([BZ)V");
+    if (!on_chunk) {
+        env->DeleteLocalRef(callback_cls);
+        return;
+    }
+
+    std::string input = jstring_to_string(env, text);
+    std::string lang = jstring_to_string(env, language);
+    bool callback_failed = false;
+    try {
+        std::lock_guard<std::mutex> lock(mutex);
+        tts.synthesize(
+            input, lang,
+            [&](const float* samples, size_t length, bool is_final) {
+                if (callback_failed) return;
+                std::vector<int16_t> pcm(length);
+                for (size_t i = 0; i < length; ++i) {
+                    const float clamped = std::max(-1.0f, std::min(1.0f, samples[i]));
+                    pcm[i] = static_cast<int16_t>(std::lrintf(clamped * 32767.0f));
+                }
+
+                const jsize byte_count =
+                    static_cast<jsize>(pcm.size() * sizeof(int16_t));
+                jbyteArray audio = env->NewByteArray(byte_count);
+                if (!audio) {
+                    callback_failed = true;
+                    tts.cancel();
+                    return;
+                }
+                if (byte_count > 0) {
+                    env->SetByteArrayRegion(
+                        audio, 0, byte_count,
+                        reinterpret_cast<const jbyte*>(pcm.data()));
+                }
+                if (env->ExceptionCheck()) {
+                    env->DeleteLocalRef(audio);
+                    callback_failed = true;
+                    tts.cancel();
+                    return;
+                }
+                env->CallVoidMethod(
+                    callback, on_chunk, audio,
+                    is_final ? JNI_TRUE : JNI_FALSE);
+                env->DeleteLocalRef(audio);
+                if (env->ExceptionCheck()) {
+                    callback_failed = true;
+                    tts.cancel();
+                }
+            });
+    } catch (const std::exception& e) {
+        LOGE("Streaming synthesis failed: %s", e.what());
+        if (!env->ExceptionCheck()) {
+            jclass ex_cls = env->FindClass("java/lang/RuntimeException");
+            if (ex_cls) {
+                std::string msg = std::string("Native streaming synthesis failed: ") + e.what();
+                env->ThrowNew(ex_cls, msg.c_str());
+            }
+        }
+    }
+    env->DeleteLocalRef(callback_cls);
+}
+
 JNIEXPORT jbyteArray JNICALL
 Java_audio_soniqo_speech_NativeBridge_nativeSynthesize(
     JNIEnv* env, jobject /*thiz*/, jlong handle, jstring text, jstring language)
@@ -556,6 +648,21 @@ Java_audio_soniqo_speech_NativeBridge_nativePipelineSynthesize(
         return nullptr;
     }
     return synthesize_pcm16(env, *h->tts, h->tts_mutex, text, language);
+}
+
+JNIEXPORT void JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativePipelineSynthesizeStreaming(
+    JNIEnv* env, jobject /*thiz*/, jlong handle, jstring text, jstring language,
+    jobject callback)
+{
+    auto* h = reinterpret_cast<PipelineHandle*>(handle);
+    if (!h || !h->tts) {
+        jclass ex_cls = env->FindClass("java/lang/IllegalStateException");
+        if (ex_cls) env->ThrowNew(ex_cls, "Native pipeline is closed");
+        return;
+    }
+    synthesize_streaming_pcm16(
+        env, *h->tts, h->tts_mutex, text, language, callback);
 }
 
 JNIEXPORT void JNICALL

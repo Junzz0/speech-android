@@ -6,7 +6,7 @@ speech-android — on-device speech SDK for Android (VAD + STT + TTS + noise can
 
 Thin Kotlin SDK + JNI bridge over the [speech-core](https://github.com/soniqo/speech-core)
 C++ engine, which provides the orchestration pipeline AND the ONNX Runtime
-model wrappers (Silero VAD, Parakeet STT, Kokoro TTS, DeepFilterNet3). This
+model wrappers (Silero VAD, Parakeet STT, Kokoro/Pocket TTS, DeepFilterNet3). This
 repo owns only the Android packaging and a single ~250-line JNI bridge.
 
 Linux/automotive support moved to [speech-core's `examples/linux/`](https://github.com/soniqo/speech-core/tree/main/examples/linux).
@@ -70,6 +70,7 @@ org. INT8 quantized by default.
 - `soniqo/Silero-VAD-v5-ONNX` — VAD
 - `soniqo/Parakeet-TDT-v3-ONNX` — STT (114 languages, 8192 BPE vocab)
 - `soniqo/Kokoro-82M-ONNX` — TTS + phonemizer dicts + voice embeddings
+- `soniqo/Pocket-TTS-100M-ONNX-INT8` — streaming English TTS, fixed Alba voice
 - `soniqo/DeepFilterNet3-ONNX` — noise enhancer
 
 `ModelManager.kt` handles download and caching. See speech-core's
@@ -78,7 +79,7 @@ for the full model-file inventory.
 
 ## Key files
 
-- `sdk/src/main/cpp/jni_bridge.cpp` — constructs `speech_core::SileroVad`/`ParakeetStt`/`KokoroTts` and feeds them to `speech_core::VoicePipeline`. No vtable adapters — the model wrappers implement the interfaces directly.
+- `sdk/src/main/cpp/jni_bridge.cpp` — constructs `speech_core::SileroVad`/`ParakeetStt` and the selected Kokoro/Pocket TTS wrapper, then feeds them to `speech_core::VoicePipeline`. No vtable adapters — the model wrappers implement the interfaces directly.
 - `sdk/src/main/cpp/CMakeLists.txt` — pulls speech-core in via `add_subdirectory` with `SPEECH_CORE_WITH_ONNX=ON`; the speech_core_models target provides every model wrapper.
 - `sdk/src/main/kotlin/audio/soniqo/speech/SpeechPipeline.kt` — main public Kotlin API.
 - `sdk/src/main/kotlin/audio/soniqo/speech/NativeBridge.kt` — JNI surface (must stay in lockstep with `jni_bridge.cpp`).
@@ -105,9 +106,9 @@ speech-core PR, then bump the submodule pointer here.
 - Keep `control-demo` routing model-driven: do not add keyword/regex command
   dispatch, and offer FunctionGemma only tools valid for the current device
   state.
-- Keep `control-demo`'s `ControlTools` declarations and compact prompt in sync
-  with `speech-models/models/functiongemma/training` whenever the tool surface,
-  argument schema, prompt serialization, or state rules change.
+- Keep `control-demo`'s `ControlTools` declarations and compact prompt compatible
+  with the published Control adapter whenever the tool surface, argument schema,
+  prompt serialization, or state rules change.
 - **No Claude attribution** in commits, PRs, or model cards. Strip both the `🤖 Generated with [Claude Code]` footer and the `Co-Authored-By: Claude …` trailer from defaults.
 - **Never push directly to main — always use a PR**.
 - **Always ask for confirmation before creating a git commit**.

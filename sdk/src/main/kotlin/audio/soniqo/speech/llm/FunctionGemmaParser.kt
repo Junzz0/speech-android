@@ -1,9 +1,9 @@
 package audio.soniqo.speech.llm
 
 /**
- * Kotlin port of `function_calls.parse_function_calls` from the Python
- * speech-models export repo. Pure parsing — no I/O, no native deps —
- * so it is safe to call from any thread.
+ * Kotlin port of the Python export parser's
+ * `function_calls.parse_function_calls`. Pure parsing — no I/O, no native
+ * dependencies — so it is safe to call from any thread.
  */
 object FunctionGemmaParser {
 

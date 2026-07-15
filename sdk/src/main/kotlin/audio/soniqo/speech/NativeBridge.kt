@@ -12,7 +12,7 @@ internal object NativeBridge {
         useInt8: Boolean,
         sttModel: Int,    // SttModel.ordinal: 0=PARAKEET, 1=NEMOTRON_MULTILINGUAL, 2=PARAKEET_EOU
         sttBackend: Int,  // SttBackend.ordinal: 0=ONNX, 1=LITERT
-        ttsModel: Int,    // 0=KOKORO, 1=SUPERTONIC, 2=KOKORO_SHORT_TURN
+        ttsModel: Int,    // 0=KOKORO, 1=SUPERTONIC, 2=KOKORO_SHORT_TURN, 3=POCKET
         pipelineMode: Int, // PipelineMode.ordinal: 0=ECHO, 1=TRANSCRIBE_ONLY
         language: String, // single language hint ("auto", "en-US", ...) — Nemotron prompt + TTS voice
         languageHints: Array<String>, // reserved; no current backend consumes hints
@@ -39,12 +39,18 @@ internal object NativeBridge {
     // TRANSCRIBE_ONLY agent loop speak responses without a second TTS copy.
     external fun nativePipelineTtsSampleRate(handle: Long): Int
     external fun nativePipelineSynthesize(handle: Long, text: String, language: String): ByteArray
+    external fun nativePipelineSynthesizeStreaming(
+        handle: Long,
+        text: String,
+        language: String,
+        callback: SynthesisCallback,
+    )
     external fun nativePipelineCancelSynthesis(handle: Long)
 
     external fun nativeCreateSynthesizer(
         modelDir: String,
         useNnapi: Boolean,
-        ttsModel: Int,    // 0=KOKORO, 1=SUPERTONIC, 2=KOKORO_SHORT_TURN
+        ttsModel: Int,    // 0=KOKORO, 1=SUPERTONIC, 2=KOKORO_SHORT_TURN, 3=POCKET
     ): Long
     external fun nativeDestroySynthesizer(handle: Long)
     external fun nativeStopSynthesizer(handle: Long)
@@ -61,5 +67,10 @@ internal object NativeBridge {
             sttMs: Float,
             ttsMs: Float,
         )
+    }
+
+    /** Called synchronously from native code after each safe TTS model run. */
+    fun interface SynthesisCallback {
+        fun onChunk(audio: ByteArray, isFinal: Boolean)
     }
 }

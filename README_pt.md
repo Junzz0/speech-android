@@ -12,7 +12,7 @@ Reconhecimento de fala em streaming com baixa memória (25 idiomas por padrão, 
 
 ## Escopo
 
-Este repositório é o **empacotamento Android**: SDK Kotlin, ponte JNI, app de demonstração. O motor C++ e os wrappers de modelo ONNX (Silero VAD, Parakeet STT, Kokoro TTS, DeepFilterNet3) ficam em [speech-core](https://github.com/soniqo/speech-core) e são incorporados via submódulo git. Linux / automotivo (Yocto, Qualcomm SA8295P/SA8255P) está em [speech-core/examples/linux](https://github.com/soniqo/speech-core/tree/main/examples/linux).
+Este repositório é o **empacotamento Android**: SDK Kotlin, ponte JNI, app de demonstração. O motor C++ e os wrappers de modelo ONNX (Silero VAD, Parakeet STT, Kokoro/Pocket TTS, DeepFilterNet3) ficam em [speech-core](https://github.com/soniqo/speech-core) e são incorporados via submódulo git. Linux / automotivo (Yocto, Qualcomm SA8295P/SA8255P) está em [speech-core/examples/linux](https://github.com/soniqo/speech-core/tree/main/examples/linux).
 
 ## Modelos
 
@@ -21,6 +21,7 @@ Este repositório é o **empacotamento Android**: SDK Kotlin, ponte JNI, app de 
 | [Parakeet-EOU 120M](https://soniqo.audio/pt/guides/dictate) | STT em streaming + EOU (padrão) | [153 MB](https://huggingface.co/soniqo/Parakeet-EOU-120M-ONNX-INT8) | 232 MB | 25 |
 | [Parakeet TDT v3](https://soniqo.audio/pt/guides/parakeet/android) | STT de ampla cobertura (opcional) | [891 MB](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | ~1,1-1,3 GB | 114 |
 | [Kokoro 82M](https://soniqo.audio/pt/guides/kokoro/android) | Texto para fala (padrão) | [330 MB](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | 640 MB | 8 (en, fr, es, it, pt, hi, ja, zh) |
+| [Pocket TTS 100M](https://huggingface.co/soniqo/Pocket-TTS-100M-ONNX-INT8) | Texto para fala em streaming (opcional, voz Alba fixa) | ~126 MB | ainda não medido | Inglês |
 | [Supertonic-3](https://soniqo.audio/pt/guides/supertonic) | Texto para fala (LiteRT, flow-matching, G2P-free, 44,1 kHz) | [~380 MB](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 MB | 31 |
 | [Silero VAD v5](https://soniqo.audio/pt/guides/vad/android) | Detecção de atividade vocal | [2 MB](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | <10 MB | Qualquer |
 | [DeepFilterNet3](https://soniqo.audio/pt/guides/denoise/android) | Cancelamento de ruído | [~8 MB](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | não carregado por padrão | Qualquer |
@@ -101,7 +102,7 @@ O módulo [`app/`](app/) é uma demo mínima de assistente de voz com:
 
 O app separado [`control-demo/`](control-demo/) executa todo o agente
 localmente: Silero VAD → Parakeet-EOU STT → chamadas de ferramentas do
-FunctionGemma 270M → ações do dispositivo Android → Kokoro TTS. Ele mostra a
+FunctionGemma 270M → ações do dispositivo Android → Pocket TTS. Ele mostra a
 latência de cada etapa e vincula diretamente o `:sdk` deste checkout, usando
 assim as otimizações locais de voz.
 
@@ -240,7 +241,8 @@ Suporte a barge-in: falar durante a reprodução TTS interrompe e inicia uma nov
 │  ┌──────────────────────────────────────┐    │
 │  │  speech_core_models (submódulo git)  │    │
 │  │   SileroVad / ParakeetStt /          │    │
-│  │   KokoroTts / DeepFilterEnhancer     │    │
+│  │   KokoroTts / OnnxPocketTts /        │    │
+│  │   DeepFilterEnhancer                  │    │
 │  │            │                         │    │
 │  │            ▼                         │    │
 │  │  speech_core  (orquestração:         │    │

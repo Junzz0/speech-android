@@ -20,6 +20,8 @@ import java.util.concurrent.TimeUnit
 object ModelManager {
 
     private const val BASE_URL = "https://huggingface.co/soniqo"
+    private const val POCKET_TTS_REVISION = "v1.0.0"
+    private const val POCKET_TTS_DIR = "pocket_tts"
 
     // Bump when models on HuggingFace are updated to trigger cache invalidation.
     // v6: default STT switched to Parakeet-EOU-120M-ONNX-INT8, the low-memory
@@ -140,6 +142,28 @@ object ModelManager {
             "voice_styles/M1.json", "voice_styles/M2.json", "voice_styles/M3.json",
             "voice_styles/M4.json", "voice_styles/M5.json",
         ).map { ModelFile("Supertonic-3-LiteRT", it) }
+        TtsModel.POCKET -> listOf(
+            // Runtime files from the immutable public fixed-Alba bundle. Keep
+            // them below pocket_tts/: Parakeet and Pocket both ship vocab.json.
+            "decoder.int8.onnx",
+            "encoder.onnx",
+            "lm_flow.int8.onnx",
+            "lm_main.int8.onnx",
+            "text_conditioner.onnx",
+            "token_scores.json",
+            "vocab.json",
+            // Retain the model/voice license and release manifest beside the
+            // runtime files distributed to the device.
+            "LICENSE",
+            "manifest.json",
+        ).map { filename ->
+            ModelFile(
+                repo = "Pocket-TTS-100M-ONNX-INT8",
+                filename = filename,
+                revision = POCKET_TTS_REVISION,
+                localFilename = "$POCKET_TTS_DIR/$filename",
+            )
+        }
     }
 
     // FunctionGemma is kept out of the pipeline model set: only agent demos
@@ -155,7 +179,15 @@ object ModelManager {
         )
     }
 
-    data class ModelFile(val repo: String, val filename: String)
+    data class ModelFile(
+        val repo: String,
+        /** Path within the Hugging Face repository. */
+        val filename: String,
+        /** Immutable tag/commit where available; existing bundles use main. */
+        val revision: String = "main",
+        /** Cache-relative path. May differ to avoid cross-model collisions. */
+        val localFilename: String = filename,
+    )
 
     data class Progress(
         val file: String,
@@ -203,7 +235,7 @@ object ModelManager {
             fileList
         }
         return allFiles.all { model ->
-            val dest = File(dir, model.filename)
+            val dest = File(dir, model.localFilename)
             dest.exists() && isValidModel(dest, model.filename)
         }
     }
@@ -226,7 +258,7 @@ object ModelManager {
         if (cachedModelSet(dir) != ttsModelSetKey(ttsModel)) return false
 
         return ttsModels(ttsModel).all { model ->
-            val dest = File(dir, model.filename)
+            val dest = File(dir, model.localFilename)
             dest.exists() && isValidModel(dest, model.filename)
         }
     }
@@ -248,14 +280,19 @@ object ModelManager {
         if (cachedModelSet(dir) != llmModelSetKey(llmModel)) return false
 
         return llmModels(llmModel).all { model ->
-            val dest = File(dir, model.filename)
+            val dest = File(dir, model.localFilename)
             dest.exists() && isValidModel(dest, model.filename)
         }
     }
 
     /** Path to the model directory for [precision], without downloading. */
-    fun modelDir(context: Context): String =
-        File(context.filesDir, "models").absolutePath
+    fun modelDir(
+        context: Context,
+        precision: ModelPrecision = ModelPrecision.INT8,
+        sttModel: SttModel = SttModel.PARAKEET_EOU,
+        sttBackend: SttBackend = SttBackend.ONNX,
+        ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
+    ): String = modelDirFile(context, precision, sttModel, sttBackend, ttsModel).absolutePath
 
     /** Path to the TTS-only model directory, without downloading. */
     fun ttsModelDir(context: Context): String =
@@ -411,7 +448,7 @@ object ModelManager {
     ) {
         var completed = 0
         for (model in allFiles) {
-            val dest = File(dir, model.filename)
+            val dest = File(dir, model.localFilename)
             if (dest.exists() && isValidModel(dest, model.filename)) {
                 completed++
                 continue
@@ -423,9 +460,9 @@ object ModelManager {
             }
             dest.parentFile?.mkdirs()
 
-            val url = "$BASE_URL/${model.repo}/resolve/main/${model.filename}"
+            val url = "$BASE_URL/${model.repo}/resolve/${model.revision}/${model.filename}"
             downloadFile(url, dest) { bytes, fileTotal ->
-                onProgress?.invoke(Progress(model.filename, bytes, fileTotal, allFiles.size, completed))
+                onProgress?.invoke(Progress(model.localFilename, bytes, fileTotal, allFiles.size, completed))
             }
             completed++
         }
@@ -617,6 +654,12 @@ object ModelManager {
         "kokoro-e2e.onnx" to 1_000L,                     // Small (weights in .data file)
         "kokoro-e2e-realtime.onnx" to 1_000_000L,        // ~2.5 MB shared-weight graph
         "kokoro-e2e.onnx.data" to 50_000_000L,           // ~310 MB
+        "decoder.int8.onnx" to 20_000_000L,              // Pocket decoder, ~22.7 MB
+        "encoder.onnx" to 400_000L,                      // Pocket Alba encoder, ~0.5 MB
+        "lm_flow.int8.onnx" to 9_000_000L,               // Pocket flow model, ~10.0 MB
+        "lm_main.int8.onnx" to 70_000_000L,              // Pocket recurrent LM, ~76.3 MB
+        "text_conditioner.onnx" to 15_000_000L,          // Pocket text encoder, ~16.4 MB
+        "token_scores.json" to 100_000L,                 // Pocket tokenizer scores
         "silero-vad.onnx" to 500_000L,                   // ~2 MB
         "model.litertlm" to 200_000_000L,                // ~283 MB FunctionGemma bundle
         "model-lora16-android.litertlm" to 300_000_000L, // ~327 MB LoRA-capable base

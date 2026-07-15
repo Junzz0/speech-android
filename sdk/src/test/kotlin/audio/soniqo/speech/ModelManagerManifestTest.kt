@@ -30,6 +30,7 @@ class ModelManagerManifestTest {
         assertEquals(0, TtsModel.KOKORO.nativeId)
         assertEquals(1, TtsModel.SUPERTONIC.nativeId)
         assertEquals(2, TtsModel.KOKORO_SHORT_TURN.nativeId)
+        assertEquals(3, TtsModel.POCKET.nativeId)
     }
 
     @Test
@@ -153,6 +154,37 @@ class ModelManagerManifestTest {
         )
 
         assertEquals(expected, styleFiles)
+    }
+
+    @Test
+    fun pocketManifest_isPinnedAndNamespacedAwayFromSttAssets() {
+        val files = ttsModelFiles(TtsModel.POCKET)
+
+        assertEquals(
+            listOf(
+                "decoder.int8.onnx",
+                "encoder.onnx",
+                "lm_flow.int8.onnx",
+                "lm_main.int8.onnx",
+                "text_conditioner.onnx",
+                "token_scores.json",
+                "vocab.json",
+                "LICENSE",
+                "manifest.json",
+            ),
+            files.map { it.filename },
+        )
+        assertTrue(files.all { it.repo == "Pocket-TTS-100M-ONNX-INT8" })
+        assertTrue(files.all { it.revision == "v1.0.0" })
+        assertTrue(files.all { it.localFilename == "pocket_tts/${it.filename}" })
+        assertNotEquals(
+            modelSetKey(ttsModel = TtsModel.KOKORO),
+            modelSetKey(ttsModel = TtsModel.POCKET),
+        )
+        assertNotEquals(
+            modelDirName(ttsModel = TtsModel.KOKORO),
+            modelDirName(ttsModel = TtsModel.POCKET),
+        )
     }
 
     @Test

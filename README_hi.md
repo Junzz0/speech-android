@@ -12,7 +12,7 @@ Android के लिए ऑन-डिवाइस स्पीच SDK, [ONNX Ru
 
 ## स्कोप
 
-यह रिपॉज़िटरी **Android पैकेजिंग** है: Kotlin SDK, JNI ब्रिज, डेमो ऐप। C++ इंजन और ONNX मॉडल रैपर (Silero VAD, Parakeet STT, Kokoro TTS, DeepFilterNet3) [speech-core](https://github.com/soniqo/speech-core) में रहते हैं और एक git सबमॉड्यूल के माध्यम से शामिल किए जाते हैं। Linux / ऑटोमोटिव (Yocto, Qualcomm SA8295P/SA8255P) [speech-core/examples/linux](https://github.com/soniqo/speech-core/tree/main/examples/linux) पर रहता है।
+यह रिपॉज़िटरी **Android पैकेजिंग** है: Kotlin SDK, JNI ब्रिज, डेमो ऐप। C++ इंजन और ONNX मॉडल रैपर (Silero VAD, Parakeet STT, Kokoro/Pocket TTS, DeepFilterNet3) [speech-core](https://github.com/soniqo/speech-core) में रहते हैं और एक git सबमॉड्यूल के माध्यम से शामिल किए जाते हैं। Linux / ऑटोमोटिव (Yocto, Qualcomm SA8295P/SA8255P) [speech-core/examples/linux](https://github.com/soniqo/speech-core/tree/main/examples/linux) पर रहता है।
 
 ## मॉडल
 
@@ -21,6 +21,7 @@ Android के लिए ऑन-डिवाइस स्पीच SDK, [ONNX Ru
 | [Parakeet-EOU 120M](https://soniqo.audio/hi/guides/dictate) | स्ट्रीमिंग STT + EOU (डिफ़ॉल्ट) | [153 MB](https://huggingface.co/soniqo/Parakeet-EOU-120M-ONNX-INT8) | 232 MB | 25 |
 | [Parakeet TDT v3](https://soniqo.audio/hi/guides/parakeet/android) | व्यापक STT (वैकल्पिक) | [891 MB](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | ~1.1-1.3 GB | 114 |
 | [Kokoro 82M](https://soniqo.audio/hi/guides/kokoro/android) | टेक्स्ट-टू-स्पीच (डिफ़ॉल्ट) | [330 MB](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | 640 MB | 8 (en, fr, es, it, pt, hi, ja, zh) |
+| [Pocket TTS 100M](https://huggingface.co/soniqo/Pocket-TTS-100M-ONNX-INT8) | स्ट्रीमिंग टेक्स्ट-टू-स्पीच (वैकल्पिक, स्थिर Alba आवाज़) | ~126 MB | अभी मापा नहीं गया | अंग्रेज़ी |
 | [Supertonic-3](https://soniqo.audio/hi/guides/supertonic) | टेक्स्ट-टू-स्पीच (LiteRT, फ़्लो-मैचिंग, G2P-free, 44.1 kHz) | [~380 MB](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 MB | 31 |
 | [Silero VAD v5](https://soniqo.audio/hi/guides/vad/android) | वॉयस एक्टिविटी डिटेक्शन | [2 MB](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | <10 MB | कोई भी |
 | [DeepFilterNet3](https://soniqo.audio/hi/guides/denoise/android) | शोर रद्दीकरण | [~8 MB](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | डिफ़ॉल्ट रूप से लोड नहीं | कोई भी |
@@ -101,7 +102,7 @@ cd speech-android
 
 अलग [`control-demo/`](control-demo/) ऐप पूरे एजेंट को स्थानीय रूप से चलाता है:
 Silero VAD → Parakeet-EOU STT → FunctionGemma 270M टूल कॉल → Android डिवाइस
-एक्शन → Kokoro TTS। यह हर चरण की लेटेंसी दिखाता है और इस checkout के `:sdk`
+एक्शन → Pocket TTS। यह हर चरण की लेटेंसी दिखाता है और इस checkout के `:sdk`
 से सीधे लिंक होता है, इसलिए स्थानीय स्पीच ऑप्टिमाइज़ेशन उपयोग होते हैं।
 
 ```bash
@@ -215,7 +216,8 @@ Idle → Listening → Transcribing → Speaking → Idle
 │  ┌──────────────────────────────────────┐    │
 │  │  speech_core_models (git submodule)  │    │
 │  │   SileroVad / ParakeetStt /          │    │
-│  │   KokoroTts / DeepFilterEnhancer     │    │
+│  │   KokoroTts / OnnxPocketTts /        │    │
+│  │   DeepFilterEnhancer                  │    │
 │  │            │                         │    │
 │  │            ▼                         │    │
 │  │  speech_core  (orchestration:        │    │
