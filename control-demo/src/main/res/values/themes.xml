@@ -1,0 +1,10 @@
+<resources>
+    <!-- Launch/window theme only — Compose owns everything after first frame.
+         Dark window background avoids a white flash before setContent runs. -->
+    <style name="Theme.SoniqoControl" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/asphalt</item>
+        <item name="android:statusBarColor">@color/asphalt</item>
+        <item name="android:navigationBarColor">@color/asphalt</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

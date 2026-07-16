@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #
 # Pull in speech-core via add_subdirectory so we reuse its target definitions
 # rather than re-listing sources here. SPEECH_CORE_WITH_ONNX=ON adds the
-# speech_core_models target (Silero VAD / Parakeet STT / Kokoro TTS /
+# speech_core_models target (Silero VAD / Parakeet STT / Kokoro and Pocket TTS /
 # DeepFilterNet wrappers). Tests and examples are off — the Android NDK
 # can't run host ctest binaries anyway.
 # ---------------------------------------------------------------------------

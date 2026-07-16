@@ -12,13 +12,23 @@ enum class SttModel { PARAKEET, NEMOTRON_MULTILINGUAL, PARAKEET_EOU }
 enum class SttBackend { ONNX, LITERT }
 
 /** On-device TTS model. [KOKORO_SHORT_TURN] uses the same Kokoro weights with
- *  a shorter unrolled graph for bounded, low-latency voice-agent replies.
- *  [KOKORO] keeps the full-capacity graph; [SUPERTONIC] is a LiteRT
- *  flow-matching model (44.1 kHz, 31 languages, G2P-free). */
+ *  a shorter unrolled graph for bounded voice-agent replies. [KOKORO] keeps
+ *  the full-capacity graph; [SUPERTONIC] is a LiteRT flow-matching model
+ *  (44.1 kHz, 31 languages, G2P-free). [POCKET] is the true-streaming ONNX
+ *  profile: English-only, fixed Alba voice, with 80 ms audio frames. */
 enum class TtsModel(internal val nativeId: Int) {
     KOKORO(0),
     SUPERTONIC(1),
     KOKORO_SHORT_TURN(2),
+    POCKET(3),
+}
+
+/** Optional on-device language-model bundle. [FUNCTIONGEMMA] is the original
+ *  standalone export. [FUNCTIONGEMMA_CONTROL_LORA] is the reusable
+ *  LoRA-enabled Android base plus the separately loaded Control adapter. */
+enum class LlmModel {
+    FUNCTIONGEMMA,
+    FUNCTIONGEMMA_CONTROL_LORA,
 }
 
 internal val TtsModel.isKokoro: Boolean

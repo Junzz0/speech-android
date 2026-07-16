@@ -20,6 +20,8 @@ import java.util.concurrent.TimeUnit
 object ModelManager {
 
     private const val BASE_URL = "https://huggingface.co/soniqo"
+    private const val POCKET_TTS_REVISION = "v1.0.0"
+    private const val POCKET_TTS_DIR = "pocket_tts"
 
     // Bump when models on HuggingFace are updated to trigger cache invalidation.
     // v6: default STT switched to Parakeet-EOU-120M-ONNX-INT8, the low-memory
@@ -140,16 +142,52 @@ object ModelManager {
             "voice_styles/M1.json", "voice_styles/M2.json", "voice_styles/M3.json",
             "voice_styles/M4.json", "voice_styles/M5.json",
         ).map { ModelFile("Supertonic-3-LiteRT", it) }
+        TtsModel.POCKET -> listOf(
+            // Runtime files from the immutable public fixed-Alba bundle. Keep
+            // them below pocket_tts/: Parakeet and Pocket both ship vocab.json.
+            "decoder.int8.onnx",
+            "encoder.onnx",
+            "lm_flow.int8.onnx",
+            "lm_main.int8.onnx",
+            "text_conditioner.onnx",
+            "token_scores.json",
+            "vocab.json",
+            // Retain the model/voice license and release manifest beside the
+            // runtime files distributed to the device.
+            "LICENSE",
+            "manifest.json",
+        ).map { filename ->
+            ModelFile(
+                repo = "Pocket-TTS-100M-ONNX-INT8",
+                filename = filename,
+                revision = POCKET_TTS_REVISION,
+                localFilename = "$POCKET_TTS_DIR/$filename",
+            )
+        }
     }
 
-    // FunctionGemma 270M tool-calling LLM — a single .litertlm bundle for the
-    // LiteRT-LM runtime. Kept out of the pipeline model set: only agent demos
-    // opt in via [ensureLlmModels], so SDK integrations never pull the 283 MB.
-    private fun llmModels(): List<ModelFile> = listOf(
-        ModelFile("FunctionGemma-270M-LiteRT-LM", "model.litertlm"),
-    )
+    // FunctionGemma is kept out of the pipeline model set: only agent demos
+    // opt in via [ensureLlmModels]. The Control profile downloads one reusable
+    // LoRA-capable base and its small adapter as distinct files.
+    private fun llmModels(llmModel: LlmModel): List<ModelFile> = when (llmModel) {
+        LlmModel.FUNCTIONGEMMA -> listOf(
+            ModelFile("FunctionGemma-270M-LiteRT-LM", "model.litertlm"),
+        )
+        LlmModel.FUNCTIONGEMMA_CONTROL_LORA -> listOf(
+            ModelFile("FunctionGemma-270M-LiteRT-LM", "model-lora16-android.litertlm"),
+            ModelFile("FunctionGemma-270M-LiteRT-LM", "control-r4-rank16.tflite"),
+        )
+    }
 
-    data class ModelFile(val repo: String, val filename: String)
+    data class ModelFile(
+        val repo: String,
+        /** Path within the Hugging Face repository. */
+        val filename: String,
+        /** Immutable tag/commit where available; existing bundles use main. */
+        val revision: String = "main",
+        /** Cache-relative path. May differ to avoid cross-model collisions. */
+        val localFilename: String = filename,
+    )
 
     data class Progress(
         val file: String,
@@ -197,7 +235,7 @@ object ModelManager {
             fileList
         }
         return allFiles.all { model ->
-            val dest = File(dir, model.filename)
+            val dest = File(dir, model.localFilename)
             dest.exists() && isValidModel(dest, model.filename)
         }
     }
@@ -220,7 +258,7 @@ object ModelManager {
         if (cachedModelSet(dir) != ttsModelSetKey(ttsModel)) return false
 
         return ttsModels(ttsModel).all { model ->
-            val dest = File(dir, model.filename)
+            val dest = File(dir, model.localFilename)
             dest.exists() && isValidModel(dest, model.filename)
         }
     }
@@ -229,36 +267,62 @@ object ModelManager {
      * True iff the LLM cache contains a valid FunctionGemma bundle.
      * Cheap and side-effect free — does not start a download.
      */
-    fun areLlmModelsReady(context: Context): Boolean {
-        val dir = File(context.filesDir, "models_llm")
+    fun areLlmModelsReady(
+        context: Context,
+        llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
+    ): Boolean {
+        val dir = File(llmModelDir(context, llmModel))
         if (!dir.exists()) return false
 
         val versionFile = File(dir, "version.txt")
         val cached = versionFile.takeIf { it.exists() }?.readText()?.trim()?.toIntOrNull() ?: 0
         if (cached < MODEL_VERSION) return false
-        if (cachedModelSet(dir) != llmModelSetKey()) return false
+        if (cachedModelSet(dir) != llmModelSetKey(llmModel)) return false
 
-        return llmModels().all { model ->
-            val dest = File(dir, model.filename)
+        return llmModels(llmModel).all { model ->
+            val dest = File(dir, model.localFilename)
             dest.exists() && isValidModel(dest, model.filename)
         }
     }
 
     /** Path to the model directory for [precision], without downloading. */
-    fun modelDir(context: Context): String =
-        File(context.filesDir, "models").absolutePath
+    fun modelDir(
+        context: Context,
+        precision: ModelPrecision = ModelPrecision.INT8,
+        sttModel: SttModel = SttModel.PARAKEET_EOU,
+        sttBackend: SttBackend = SttBackend.ONNX,
+        ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
+    ): String = modelDirFile(context, precision, sttModel, sttBackend, ttsModel).absolutePath
 
     /** Path to the TTS-only model directory, without downloading. */
     fun ttsModelDir(context: Context): String =
         File(context.filesDir, "models_tts").absolutePath
 
     /** Path to the LLM model directory, without downloading. */
-    fun llmModelDir(context: Context): String =
-        File(context.filesDir, "models_llm").absolutePath
+    fun llmModelDir(
+        context: Context,
+        llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
+    ): String {
+        val name = when (llmModel) {
+            LlmModel.FUNCTIONGEMMA -> "models_llm"
+            LlmModel.FUNCTIONGEMMA_CONTROL_LORA -> "models_llm-control-lora"
+        }
+        return File(context.filesDir, name).absolutePath
+    }
 
     /** Absolute path of the FunctionGemma .litertlm bundle, without downloading. */
-    fun llmModelFile(context: Context): String =
-        File(llmModelDir(context), llmModels().first().filename).absolutePath
+    fun llmModelFile(
+        context: Context,
+        llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
+    ): String = File(
+        llmModelDir(context, llmModel),
+        llmModels(llmModel).first { it.filename.endsWith(".litertlm") }.filename,
+    ).absolutePath
+
+    /** Adapter path for LoRA profiles, or null for a standalone LLM bundle. */
+    fun llmAdapterFile(context: Context, llmModel: LlmModel): String? =
+        llmModels(llmModel).firstOrNull { it.filename.endsWith(".tflite") }
+            ?.let { File(llmModelDir(context, llmModel), it.filename).absolutePath }
 
     /** Returns the model directory path, downloading models if needed. */
     suspend fun ensureModels(
@@ -334,20 +398,21 @@ object ModelManager {
     }
 
     /**
-     * Returns the path of the FunctionGemma .litertlm bundle, downloading it
-     * if needed. Separate from [ensureModels] so the 283 MB LLM only lands on
-     * devices whose app actually runs the tool-calling agent.
+     * Returns the path of the selected FunctionGemma .litertlm base,
+     * downloading its complete artifact set if needed. Separate from
+     * [ensureModels] so LLM files only land on devices that run an agent.
      */
     suspend fun ensureLlmModels(
         context: Context,
+        llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
         onProgress: ((Progress) -> Unit)? = null,
     ): String = withContext(Dispatchers.IO) {
-        val dir = File(context.filesDir, "models_llm")
+        val dir = File(llmModelDir(context, llmModel))
         dir.mkdirs()
 
         val versionFile = File(dir, "version.txt")
         val setFile = File(dir, MODEL_SET_FILENAME)
-        val requestedModelSet = llmModelSetKey()
+        val requestedModelSet = llmModelSetKey(llmModel)
         val cached = versionFile.takeIf { it.exists() }?.readText()?.trim()?.toIntOrNull() ?: 0
         val cachedSet = cachedModelSet(dir)
 
@@ -368,9 +433,12 @@ object ModelManager {
         setFile.writeText(requestedModelSet)
         versionFile.writeText(MODEL_VERSION.toString())
 
-        downloadMissingModels(dir, llmModels(), onProgress)
+        downloadMissingModels(dir, llmModels(llmModel), onProgress)
 
-        File(dir, llmModels().first().filename).absolutePath
+        File(
+            dir,
+            llmModels(llmModel).first { it.filename.endsWith(".litertlm") }.filename,
+        ).absolutePath
     }
 
     private fun downloadMissingModels(
@@ -380,7 +448,7 @@ object ModelManager {
     ) {
         var completed = 0
         for (model in allFiles) {
-            val dest = File(dir, model.filename)
+            val dest = File(dir, model.localFilename)
             if (dest.exists() && isValidModel(dest, model.filename)) {
                 completed++
                 continue
@@ -392,9 +460,9 @@ object ModelManager {
             }
             dest.parentFile?.mkdirs()
 
-            val url = "$BASE_URL/${model.repo}/resolve/main/${model.filename}"
+            val url = "$BASE_URL/${model.repo}/resolve/${model.revision}/${model.filename}"
             downloadFile(url, dest) { bytes, fileTotal ->
-                onProgress?.invoke(Progress(model.filename, bytes, fileTotal, allFiles.size, completed))
+                onProgress?.invoke(Progress(model.localFilename, bytes, fileTotal, allFiles.size, completed))
             }
             completed++
         }
@@ -453,10 +521,10 @@ object ModelManager {
     private fun ttsCacheName(ttsModel: TtsModel): String =
         if (ttsModel.isKokoro) TtsModel.KOKORO.name else ttsModel.name
 
-    private fun llmModelSetKey(): String = listOf(
+    private fun llmModelSetKey(llmModel: LlmModel): String = listOf(
         "v$MODEL_VERSION",
         "profile=LLM",
-        "llm=FUNCTIONGEMMA_270M",
+        "llm=${llmModel.name}",
     ).joinToString("|")
 
     private fun cachedModelSet(dir: File): String? =
@@ -586,8 +654,16 @@ object ModelManager {
         "kokoro-e2e.onnx" to 1_000L,                     // Small (weights in .data file)
         "kokoro-e2e-realtime.onnx" to 1_000_000L,        // ~2.5 MB shared-weight graph
         "kokoro-e2e.onnx.data" to 50_000_000L,           // ~310 MB
+        "decoder.int8.onnx" to 20_000_000L,              // Pocket decoder, ~22.7 MB
+        "encoder.onnx" to 400_000L,                      // Pocket Alba encoder, ~0.5 MB
+        "lm_flow.int8.onnx" to 9_000_000L,               // Pocket flow model, ~10.0 MB
+        "lm_main.int8.onnx" to 70_000_000L,              // Pocket recurrent LM, ~76.3 MB
+        "text_conditioner.onnx" to 15_000_000L,          // Pocket text encoder, ~16.4 MB
+        "token_scores.json" to 100_000L,                 // Pocket tokenizer scores
         "silero-vad.onnx" to 500_000L,                   // ~2 MB
         "model.litertlm" to 200_000_000L,                // ~283 MB FunctionGemma bundle
+        "model-lora16-android.litertlm" to 300_000_000L, // ~327 MB LoRA-capable base
+        "control-r4-rank16.tflite" to 9_000_000L,        // ~9.5 MB Control adapter
     )
 
     private fun isValidModel(file: File, filename: String): Boolean {

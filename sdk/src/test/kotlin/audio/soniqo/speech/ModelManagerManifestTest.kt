@@ -30,6 +30,7 @@ class ModelManagerManifestTest {
         assertEquals(0, TtsModel.KOKORO.nativeId)
         assertEquals(1, TtsModel.SUPERTONIC.nativeId)
         assertEquals(2, TtsModel.KOKORO_SHORT_TURN.nativeId)
+        assertEquals(3, TtsModel.POCKET.nativeId)
     }
 
     @Test
@@ -156,30 +157,87 @@ class ModelManagerManifestTest {
     }
 
     @Test
-    fun llmManifest_isSingleFunctionGemmaBundle() {
+    fun pocketManifest_isPinnedAndNamespacedAwayFromSttAssets() {
+        val files = ttsModelFiles(TtsModel.POCKET)
+
+        assertEquals(
+            listOf(
+                "decoder.int8.onnx",
+                "encoder.onnx",
+                "lm_flow.int8.onnx",
+                "lm_main.int8.onnx",
+                "text_conditioner.onnx",
+                "token_scores.json",
+                "vocab.json",
+                "LICENSE",
+                "manifest.json",
+            ),
+            files.map { it.filename },
+        )
+        assertTrue(files.all { it.repo == "Pocket-TTS-100M-ONNX-INT8" })
+        assertTrue(files.all { it.revision == "v1.0.0" })
+        assertTrue(files.all { it.localFilename == "pocket_tts/${it.filename}" })
+        assertNotEquals(
+            modelSetKey(ttsModel = TtsModel.KOKORO),
+            modelSetKey(ttsModel = TtsModel.POCKET),
+        )
+        assertNotEquals(
+            modelDirName(ttsModel = TtsModel.KOKORO),
+            modelDirName(ttsModel = TtsModel.POCKET),
+        )
+    }
+
+    @Test
+    fun llmManifest_keepsStandaloneFunctionGemmaAsDefault() {
         assertEquals(
             listOf(ModelManager.ModelFile("FunctionGemma-270M-LiteRT-LM", "model.litertlm")),
-            llmModelFiles(),
+            llmModelFiles(LlmModel.FUNCTIONGEMMA),
+        )
+    }
+
+    @Test
+    fun controlLoraManifest_hasSeparateReusableBaseAndAdapter() {
+        assertEquals(
+            listOf(
+                ModelManager.ModelFile(
+                    "FunctionGemma-270M-LiteRT-LM",
+                    "model-lora16-android.litertlm",
+                ),
+                ModelManager.ModelFile(
+                    "FunctionGemma-270M-LiteRT-LM",
+                    "control-r4-rank16.tflite",
+                ),
+            ),
+            llmModelFiles(LlmModel.FUNCTIONGEMMA_CONTROL_LORA),
         )
     }
 
     @Test
     fun llmModelSetKey_isSeparateFromPipelineAndTtsCacheKeys() {
-        assertNotEquals(llmModelSetKey(), modelSetKey())
-        assertNotEquals(llmModelSetKey(), ttsModelSetKey(TtsModel.KOKORO))
+        val stock = llmModelSetKey(LlmModel.FUNCTIONGEMMA)
+        val control = llmModelSetKey(LlmModel.FUNCTIONGEMMA_CONTROL_LORA)
+        assertNotEquals(stock, modelSetKey())
+        assertNotEquals(stock, ttsModelSetKey(TtsModel.KOKORO))
+        assertNotEquals(stock, control)
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun llmModelFiles(): List<ModelManager.ModelFile> {
-        val method = ModelManager::class.java.getDeclaredMethod("llmModels")
+    private fun llmModelFiles(llmModel: LlmModel): List<ModelManager.ModelFile> {
+        val method = ModelManager::class.java.getDeclaredMethod(
+            "llmModels",
+            LlmModel::class.java,
+        )
         method.isAccessible = true
-        return method.invoke(ModelManager) as List<ModelManager.ModelFile>
+        return method.invoke(ModelManager, llmModel) as List<ModelManager.ModelFile>
     }
 
-    private fun llmModelSetKey(): String {
-        val method = ModelManager::class.java.getDeclaredMethod("llmModelSetKey")
+    private fun llmModelSetKey(llmModel: LlmModel): String {
+        val method = ModelManager::class.java.getDeclaredMethod(
+            "llmModelSetKey",
+            LlmModel::class.java,
+        )
         method.isAccessible = true
-        return method.invoke(ModelManager) as String
+        return method.invoke(ModelManager, llmModel) as String
     }
 
     @Suppress("UNCHECKED_CAST")
