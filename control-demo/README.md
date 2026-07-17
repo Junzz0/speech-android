@@ -14,6 +14,12 @@ The app always pairs the adapter with its compact prompt serialization. The
 exact base and adapter files are published under
 [`soniqo/FunctionGemma-270M-LiteRT-LM`](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM).
 
+## Install
+
+Download the latest signed
+[Control Demo APK](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk),
+or install a development build from source as described below.
+
 ## Run
 
 Use an arm64 Android device with at least 4 GB RAM:

@@ -8,7 +8,7 @@
 
 **[📚 Android 文档](https://soniqo.audio/zh/getting-started/android)**
 
-**[演示 APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[模型](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)**(Apple 对应版本)· **[speech-core](https://github.com/soniqo/speech-core)**(管线引擎 + Linux/嵌入式构建)
+**[演示 APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[Control Demo APK](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk)** · **[模型](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)**(Apple 对应版本)· **[speech-core](https://github.com/soniqo/speech-core)**(管线引擎 + Linux/嵌入式构建)
 
 ## 范围
 
@@ -103,6 +103,8 @@ cd speech-android
 Silero VAD → Parakeet-EOU STT → FunctionGemma 270M 工具调用 →
 Android 设备操作 → Pocket TTS。它显示各阶段延迟,并直接链接此检出的
 `:sdk`,因此会使用本地语音优化。
+
+从最新版本下载[已签名的 Control Demo APK](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk),或从源码安装开发版本:
 
 ```bash
 ./gradlew :control-demo:installDebug

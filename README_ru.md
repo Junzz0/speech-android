@@ -8,7 +8,7 @@
 
 **[📚 Документация Android](https://soniqo.audio/ru/getting-started/android)**
 
-**[Демо APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[Модели](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)** (аналог для Apple) · **[speech-core](https://github.com/soniqo/speech-core)** (движок конвейера + сборка для Linux/встраиваемых систем)
+**[Демо APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[APK Control Demo](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk)** · **[Модели](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)** (аналог для Apple) · **[speech-core](https://github.com/soniqo/speech-core)** (движок конвейера + сборка для Linux/встраиваемых систем)
 
 ## Область применения
 
@@ -105,6 +105,9 @@ cd speech-android
 FunctionGemma 270M → действия Android-устройства → Pocket TTS. Оно показывает
 задержку каждого этапа и напрямую подключает `:sdk` из этой рабочей копии,
 поэтому использует локальные оптимизации речи.
+
+Скачайте [подписанный APK Control Demo](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk)
+из последнего релиза или установите сборку для разработки из исходного кода:
 
 ```bash
 ./gradlew :control-demo:installDebug

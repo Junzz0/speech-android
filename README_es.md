@@ -8,7 +8,7 @@ Reconocimiento de voz en streaming de baja memoria (25 idiomas por defecto; TDT 
 
 **[📚 Documentación de Android](https://soniqo.audio/es/getting-started/android)**
 
-**[APK de demostración](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[Modelos](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)** (contraparte Apple) · **[speech-core](https://github.com/soniqo/speech-core)** (motor de pipeline + compilación Linux/embebido)
+**[APK de demostración](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[APK de Control Demo](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk)** · **[Modelos](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)** (contraparte Apple) · **[speech-core](https://github.com/soniqo/speech-core)** (motor de pipeline + compilación Linux/embebido)
 
 ## Alcance
 
@@ -105,6 +105,9 @@ localmente: Silero VAD → Parakeet-EOU STT → llamadas a herramientas con
 FunctionGemma 270M → acciones del dispositivo Android → Pocket TTS. Muestra la
 latencia de cada etapa y enlaza directamente con el `:sdk` de este checkout,
 por lo que usa las optimizaciones de voz locales.
+
+Descarga el [APK firmado de Control Demo](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk)
+de la versión más reciente, o instala una compilación de desarrollo desde el código fuente:
 
 ```bash
 ./gradlew :control-demo:installDebug
