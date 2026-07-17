@@ -8,7 +8,7 @@
 
 **[📚 Android 문서](https://soniqo.audio/ko/getting-started/android)**
 
-**[데모 APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[모델](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)**(Apple 버전) · **[speech-core](https://github.com/soniqo/speech-core)**(파이프라인 엔진 + Linux/임베디드 빌드)
+**[데모 APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[Control Demo APK](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk)** · **[모델](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)**(Apple 버전) · **[speech-core](https://github.com/soniqo/speech-core)**(파이프라인 엔진 + Linux/임베디드 빌드)
 
 ## 범위
 
@@ -104,6 +104,8 @@ cd speech-android
 Parakeet-EOU STT → FunctionGemma 270M 도구 호출 → Android 기기 동작 →
 Pocket TTS로 이어지는 전체 에이전트를 로컬에서 실행합니다. 단계별 지연 시간을
 표시하고 이 체크아웃의 `:sdk`에 직접 연결하므로 로컬 음성 최적화를 사용합니다.
+
+최신 릴리스에서 [서명된 Control Demo APK](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk)를 다운로드하거나 소스에서 개발 빌드를 설치하세요.
 
 ```bash
 ./gradlew :control-demo:installDebug

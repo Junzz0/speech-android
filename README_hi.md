@@ -8,7 +8,7 @@ Android के लिए ऑन-डिवाइस स्पीच SDK, [ONNX Ru
 
 **[📚 Android दस्तावेज़](https://soniqo.audio/hi/getting-started/android)**
 
-**[डेमो APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[मॉडल](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)** (Apple समकक्ष) · **[speech-core](https://github.com/soniqo/speech-core)** (पाइपलाइन इंजन + Linux/एम्बेडेड बिल्ड)
+**[डेमो APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[Control Demo APK](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk)** · **[मॉडल](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)** (Apple समकक्ष) · **[speech-core](https://github.com/soniqo/speech-core)** (पाइपलाइन इंजन + Linux/एम्बेडेड बिल्ड)
 
 ## स्कोप
 
@@ -104,6 +104,9 @@ cd speech-android
 Silero VAD → Parakeet-EOU STT → FunctionGemma 270M टूल कॉल → Android डिवाइस
 एक्शन → Pocket TTS। यह हर चरण की लेटेंसी दिखाता है और इस checkout के `:sdk`
 से सीधे लिंक होता है, इसलिए स्थानीय स्पीच ऑप्टिमाइज़ेशन उपयोग होते हैं।
+
+नवीनतम रिलीज़ से [हस्ताक्षरित Control Demo APK](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk)
+डाउनलोड करें, या सोर्स से डेवलपमेंट बिल्ड इंस्टॉल करें:
 
 ```bash
 ./gradlew :control-demo:installDebug

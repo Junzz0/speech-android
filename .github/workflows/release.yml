@@ -32,19 +32,24 @@ jobs:
 
       - name: Extract version from tag
         id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Build SDK
         run: ./gradlew :sdk:assembleRelease
 
       - name: Run unit tests
-        run: ./gradlew :sdk:testReleaseUnitTest
+        run: ./gradlew :sdk:testReleaseUnitTest :control-demo:testDebugUnitTest
 
       - name: Decode signing keystore
         run: echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.keystore
 
-      - name: Build signed demo APK
-        run: ./gradlew :app:assembleRelease -PVERSION_NAME=${{ steps.version.outputs.VERSION }} -PVERSION_CODE=${{ github.run_number }}
+      - name: Build signed demo APKs
+        run: |
+          ./gradlew \
+            :app:assembleRelease \
+            :control-demo:assembleRelease \
+            -PVERSION_NAME=${{ steps.version.outputs.VERSION }} \
+            -PVERSION_CODE=${{ github.run_number }}
         env:
           SIGNING_KEYSTORE: /tmp/release.keystore
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
@@ -70,9 +75,11 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.GPG_SIGNING_PASSWORD }}
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             sdk/build/outputs/aar/sdk-release.aar
             app/build/outputs/apk/release/app-release.apk
+            control-demo/build/outputs/apk/release/control-demo-release.apk
+          fail_on_unmatched_files: true
           generate_release_notes: true

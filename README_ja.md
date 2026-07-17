@@ -8,7 +8,7 @@
 
 **[📚 Android ドキュメント](https://soniqo.audio/ja/getting-started/android)**
 
-**[デモ APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[モデル](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)**(Apple 版)· **[speech-core](https://github.com/soniqo/speech-core)**(パイプラインエンジン + Linux/組み込みビルド)
+**[デモ APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[Control Demo APK](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk)** · **[モデル](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)**(Apple 版)· **[speech-core](https://github.com/soniqo/speech-core)**(パイプラインエンジン + Linux/組み込みビルド)
 
 ## スコープ
 
@@ -105,6 +105,8 @@ Parakeet-EOU STT → FunctionGemma 270M ツール呼び出し → Android
 デバイス操作 → Pocket TTS というエージェント全体をローカルで実行します。
 各段階のレイテンシを表示し、このチェックアウトの `:sdk` に直接リンクするため、
 ローカルの音声最適化が使われます。
+
+最新リリースから[署名済み Control Demo APK](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk)をダウンロードするか、ソースから開発ビルドをインストールします：
 
 ```bash
 ./gradlew :control-demo:installDebug
