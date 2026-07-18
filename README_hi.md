@@ -10,6 +10,15 @@ Android के लिए ऑन-डिवाइस स्पीच SDK, [ONNX Ru
 
 **[डेमो APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[Control Demo APK](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk)** · **[मॉडल](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)** (Apple समकक्ष) · **[speech-core](https://github.com/soniqo/speech-core)** (पाइपलाइन इंजन + Linux/एम्बेडेड बिल्ड)
 
+## डेमो
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=7L7_Uvvxtv0">
+    <img src="https://img.youtube.com/vi/7L7_Uvvxtv0/maxresdefault.jpg" width="640" alt="पूरा ऑफ़लाइन वॉइस एजेंट Android पर 1.2 GB में — YouTube पर डेमो देखें">
+  </a>
+</p>
+<p align="center"><em><a href="control-demo/">control-demo</a> का पूरा कमांड लूप — Silero VAD → Parakeet STT → FunctionGemma → डिवाइस एक्शन → Pocket TTS जवाब — पूरी तरह ऑफ़लाइन, 1.2 GB RAM में</em></p>
+
 ## स्कोप
 
 यह रिपॉज़िटरी **Android पैकेजिंग** है: Kotlin SDK, JNI ब्रिज, डेमो ऐप। C++ इंजन और ONNX मॉडल रैपर (Silero VAD, Parakeet STT, Kokoro/Pocket TTS, DeepFilterNet3) [speech-core](https://github.com/soniqo/speech-core) में रहते हैं और एक git सबमॉड्यूल के माध्यम से शामिल किए जाते हैं। Linux / ऑटोमोटिव (Yocto, Qualcomm SA8295P/SA8255P) [speech-core/examples/linux](https://github.com/soniqo/speech-core/tree/main/examples/linux) पर रहता है।

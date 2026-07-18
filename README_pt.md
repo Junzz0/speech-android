@@ -10,6 +10,15 @@ Reconhecimento de fala em streaming com baixa memória (25 idiomas por padrão, 
 
 **[APK de demonstração](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[APK do Control Demo](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk)** · **[Modelos](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)** (contraparte Apple) · **[speech-core](https://github.com/soniqo/speech-core)** (motor de pipeline + build Linux/embarcado)
 
+## Demonstração
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=7L7_Uvvxtv0">
+    <img src="https://img.youtube.com/vi/7L7_Uvvxtv0/maxresdefault.jpg" width="640" alt="Um agente de voz totalmente offline em 1.2 GB no Android — assista à demo no YouTube">
+  </a>
+</p>
+<p align="center"><em>O loop de comando completo do <a href="control-demo/">control-demo</a> — Silero VAD → Parakeet STT → FunctionGemma → ação do dispositivo → resposta do Pocket TTS — totalmente offline em 1.2 GB de RAM</em></p>
+
 ## Escopo
 
 Este repositório é o **empacotamento Android**: SDK Kotlin, ponte JNI, app de demonstração. O motor C++ e os wrappers de modelo ONNX (Silero VAD, Parakeet STT, Kokoro/Pocket TTS, DeepFilterNet3) ficam em [speech-core](https://github.com/soniqo/speech-core) e são incorporados via submódulo git. Linux / automotivo (Yocto, Qualcomm SA8295P/SA8255P) está em [speech-core/examples/linux](https://github.com/soniqo/speech-core/tree/main/examples/linux).

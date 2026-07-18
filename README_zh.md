@@ -10,6 +10,15 @@
 
 **[演示 APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[Control Demo APK](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk)** · **[模型](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)**(Apple 对应版本)· **[speech-core](https://github.com/soniqo/speech-core)**(管线引擎 + Linux/嵌入式构建)
 
+## 演示
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=7L7_Uvvxtv0">
+    <img src="https://img.youtube.com/vi/7L7_Uvvxtv0/maxresdefault.jpg" width="640" alt="我们把完整的离线语音代理装进 Android 的 1.2 GB — 在 YouTube 观看演示">
+  </a>
+</p>
+<p align="center"><em><a href="control-demo/">control-demo</a> 的完整指令闭环 — Silero VAD → Parakeet STT → FunctionGemma → 设备操作 → Pocket TTS 回复 — 全程离线,仅 1.2 GB 内存</em></p>
+
 ## 范围
 
 本仓库是 **Android 打包**:Kotlin SDK、JNI 桥接、演示应用。C++ 引擎和 ONNX 模型封装(Silero VAD、Parakeet STT、Kokoro/Pocket TTS、DeepFilterNet3)位于 [speech-core](https://github.com/soniqo/speech-core),通过 git 子模块引入。Linux / 汽车(Yocto、Qualcomm SA8295P/SA8255P)位于 [speech-core/examples/linux](https://github.com/soniqo/speech-core/tree/main/examples/linux)。

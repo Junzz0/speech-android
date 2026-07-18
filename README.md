@@ -10,6 +10,15 @@ Low-memory streaming speech recognition (25 languages by default, 114-language T
 
 **[Demo APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[Control Demo APK](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk)** · **[Models](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)** (Apple counterpart) · **[speech-core](https://github.com/soniqo/speech-core)** (pipeline engine + Linux/embedded build)
 
+## Demo
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=7L7_Uvvxtv0">
+    <img src="https://img.youtube.com/vi/7L7_Uvvxtv0/maxresdefault.jpg" width="640" alt="We fit a full offline voice agent into 1.2 GB on Android — watch the demo on YouTube">
+  </a>
+</p>
+<p align="center"><em>The <a href="control-demo/">control-demo</a> command loop — Silero VAD → Parakeet STT → FunctionGemma → device action → Pocket TTS reply — fully offline in 1.2 GB of RAM</em></p>
+
 ## Scope
 
 This repo is the **Android packaging**: Kotlin SDK, JNI bridge, demo app. The C++ engine and ONNX model wrappers (Silero VAD, Parakeet STT, Kokoro/Pocket TTS, DeepFilterNet3) live in [speech-core](https://github.com/soniqo/speech-core) and are pulled in via a git submodule. Linux / automotive (Yocto, Qualcomm SA8295P/SA8255P) lives at [speech-core/examples/linux](https://github.com/soniqo/speech-core/tree/main/examples/linux).

@@ -10,6 +10,15 @@
 
 **[Демо APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[APK Control Demo](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk)** · **[Модели](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)** (аналог для Apple) · **[speech-core](https://github.com/soniqo/speech-core)** (движок конвейера + сборка для Linux/встраиваемых систем)
 
+## Демонстрация
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=7L7_Uvvxtv0">
+    <img src="https://img.youtube.com/vi/7L7_Uvvxtv0/maxresdefault.jpg" width="640" alt="Полностью офлайновый голосовой агент в 1,2 ГБ на Android — смотреть демо на YouTube">
+  </a>
+</p>
+<p align="center"><em>Полный командный цикл <a href="control-demo/">control-demo</a> — Silero VAD → Parakeet STT → FunctionGemma → действие на устройстве → ответ Pocket TTS — полностью офлайн в 1,2 ГБ RAM</em></p>
+
 ## Область применения
 
 Этот репозиторий — **Android-обёртка**: Kotlin SDK, JNI-мост, демо-приложение. C++-движок и обёртки ONNX-моделей (Silero VAD, Parakeet STT, Kokoro/Pocket TTS, DeepFilterNet3) находятся в [speech-core](https://github.com/soniqo/speech-core) и подключаются через git-submodule. Linux / автомобильные системы (Yocto, Qualcomm SA8295P/SA8255P) — в [speech-core/examples/linux](https://github.com/soniqo/speech-core/tree/main/examples/linux).

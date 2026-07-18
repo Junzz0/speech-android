@@ -10,6 +10,15 @@
 
 **[デモ APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[Control Demo APK](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk)** · **[モデル](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)**(Apple 版)· **[speech-core](https://github.com/soniqo/speech-core)**(パイプラインエンジン + Linux/組み込みビルド)
 
+## デモ
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=7L7_Uvvxtv0">
+    <img src="https://img.youtube.com/vi/7L7_Uvvxtv0/maxresdefault.jpg" width="640" alt="完全オフラインの音声エージェントを Android の 1.2 GB に収めました — YouTube でデモを見る">
+  </a>
+</p>
+<p align="center"><em><a href="control-demo/">control-demo</a> の完全なコマンドループ — Silero VAD → Parakeet STT → FunctionGemma → デバイス操作 → Pocket TTS 応答 — 完全オフライン、RAM 1.2 GB</em></p>
+
 ## スコープ
 
 このリポジトリは **Android パッケージング** を担当します:Kotlin SDK、JNI ブリッジ、デモアプリ。C++ エンジンおよび ONNX モデルラッパー(Silero VAD、Parakeet STT、Kokoro/Pocket TTS、DeepFilterNet3)は [speech-core](https://github.com/soniqo/speech-core) に存在し、git サブモジュールとして取り込まれます。Linux / 自動車向け(Yocto、Qualcomm SA8295P/SA8255P)は [speech-core/examples/linux](https://github.com/soniqo/speech-core/tree/main/examples/linux) に存在します。
