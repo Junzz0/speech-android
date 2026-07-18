@@ -10,6 +10,15 @@
 
 **[데모 APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk)** · **[Control Demo APK](https://github.com/soniqo/speech-android/releases/latest/download/control-demo-release.apk)** · **[모델](https://huggingface.co/collections/aufklarer/speech-android-models-69bb8a156cac0b96a2247f26)** · **[speech-swift](https://github.com/soniqo/speech-swift)**(Apple 버전) · **[speech-core](https://github.com/soniqo/speech-core)**(파이프라인 엔진 + Linux/임베디드 빌드)
 
+## 데모
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=7L7_Uvvxtv0">
+    <img src="https://img.youtube.com/vi/7L7_Uvvxtv0/maxresdefault.jpg" width="640" alt="완전 오프라인 음성 에이전트를 Android의 1.2 GB에 담았습니다 — YouTube에서 데모 보기">
+  </a>
+</p>
+<p align="center"><em><a href="control-demo/">control-demo</a>의 전체 명령 루프 — Silero VAD → Parakeet STT → FunctionGemma → 기기 동작 → Pocket TTS 응답 — 완전 오프라인, RAM 1.2 GB</em></p>
+
 ## 범위
 
 이 저장소는 **Android 패키징**입니다: Kotlin SDK, JNI 브리지, 데모 앱. C++ 엔진과 ONNX 모델 래퍼(Silero VAD, Parakeet STT, Kokoro/Pocket TTS, DeepFilterNet3)는 [speech-core](https://github.com/soniqo/speech-core)에 있으며 git 서브모듈을 통해 가져옵니다. Linux / 자동차(Yocto, Qualcomm SA8295P/SA8255P)는 [speech-core/examples/linux](https://github.com/soniqo/speech-core/tree/main/examples/linux)에 있습니다.
