@@ -37,13 +37,10 @@ import org.robolectric.android.controller.ServiceController
 import org.robolectric.annotation.Config
 
 /**
- * Robolectric tests for [SpeechRecognitionService].
- *
- * Uses the protected seams [SpeechRecognitionService.createPipeline],
- * [SpeechRecognitionService.resolveModelDir], and
- * [SpeechRecognitionService.newAudioRecord] to inject a fake pipeline and a
- * mocked AudioRecord — no native library load, no real microphone, no model
- * download. Each test runs in well under a second.
+ * Robolectric tests for [SpeechRecognitionService]. The protected seams
+ * (createPipeline / resolveModelDir / newAudioRecord) inject a fake pipeline
+ * and a mocked AudioRecord, so no native library, microphone, or model
+ * download is involved.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
@@ -63,8 +60,7 @@ class SpeechRecognitionServiceTest {
         fakePipeline = FakeSpeechPipeline()
         fakeRecord = mockk(relaxed = true) {
             every { state } returns AudioRecord.STATE_INITIALIZED
-            // Returning -1 makes the mic loop exit immediately so it doesn't
-            // hot-spin during the test. We're not exercising the mic path here.
+            // -1 makes the mic loop exit immediately instead of hot-spinning.
             every { read(any<FloatArray>(), any(), any(), any()) } returns -1
         }
 
@@ -81,17 +77,17 @@ class SpeechRecognitionServiceTest {
     }
 
     @Test
-    fun startListening_setsUpPipelineAndSignalsReady() {
+    fun `startListening sets up pipeline and signals ready`() {
         service.startListening(Intent(), listener)
 
         verify(timeout = 1500) { listener.readyForSpeech(any()) }
     }
 
     @Test
-    fun startListening_concurrentCallReturnsBusy() {
-        // Regression test for the race fix: the first call must claim the
-        // `starting` flag synchronously so a second call hits the busy branch
-        // before the suspending setup of the first one completes.
+    fun `concurrent startListening returns busy`() {
+        // The first call must claim the `starting` flag synchronously so the
+        // second call hits the busy branch before the first's suspending
+        // setup completes.
         service.startListening(Intent(), listener)
 
         val second = mockk<RecognitionService.Callback>(relaxed = true)
@@ -101,7 +97,7 @@ class SpeechRecognitionServiceTest {
     }
 
     @Test
-    fun startListening_requestedRegionalLanguageIsAccepted() {
+    fun `requested regional language is accepted`() {
         val intent = Intent().putExtra(RecognizerIntent.EXTRA_LANGUAGE, "fr-FR")
 
         service.startListening(intent, listener)
@@ -111,7 +107,7 @@ class SpeechRecognitionServiceTest {
     }
 
     @Test
-    fun startListening_requestedLanguagePreferenceIsAccepted() {
+    fun `requested language preference is accepted`() {
         val intent = Intent().putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-US")
 
         service.startListening(intent, listener)
@@ -121,7 +117,7 @@ class SpeechRecognitionServiceTest {
     }
 
     @Test
-    fun startListening_allowedLanguagesArePassedAsHints() {
+    fun `allowed languages are passed as hints`() {
         val intent = Intent().putStringArrayListExtra(
             RecognizerIntent.EXTRA_LANGUAGE_DETECTION_ALLOWED_LANGUAGES,
             arrayListOf("fr-FR", "de-DE", "ja-JP"),
@@ -135,7 +131,7 @@ class SpeechRecognitionServiceTest {
     }
 
     @Test
-    fun startListening_requestedLanguageTakesPriorityOverAllowedLanguages() {
+    fun `requested language takes priority over allowed languages`() {
         val intent = Intent()
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
             .putStringArrayListExtra(
@@ -151,7 +147,7 @@ class SpeechRecognitionServiceTest {
     }
 
     @Test
-    fun startListening_unsupportedLanguageReportsLanguageNotSupported() {
+    fun `unsupported language reports language-not-supported`() {
         val intent = Intent().putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ja-JP")
 
         service.startListening(intent, listener)
@@ -161,7 +157,7 @@ class SpeechRecognitionServiceTest {
     }
 
     @Test
-    fun startListening_modelsNotReadyReportsLanguageUnavailableAndSchedulesDownload() {
+    fun `models not ready reports language-unavailable and schedules download`() {
         service.modelsReady = false
 
         service.startListening(Intent(), listener)
@@ -172,11 +168,9 @@ class SpeechRecognitionServiceTest {
     }
 
     @Test
-    fun stopListening_flushesPipelineWithSilence() {
-        // Regression test for the stop-hang fix: VAD detects end-of-utterance
-        // from silence in the audio stream, and nativeStop does not flush. We
-        // expect ~32 chunks × 32 ms ≈ 1 s of zero frames pushed after the mic
-        // is cut so the pipeline emits its final TranscriptionCompleted.
+    fun `stopListening flushes pipeline with silence`() {
+        // nativeStop does not flush; VAD only detects end-of-utterance from
+        // silence in the stream, so ~1 s of zero frames must follow mic cut.
         service.startListening(Intent(), listener)
         verify(timeout = 1500) { listener.readyForSpeech(any()) }
 
@@ -186,7 +180,7 @@ class SpeechRecognitionServiceTest {
     }
 
     @Test
-    fun startListening_withoutPermission_reportsInsufficient() {
+    fun `startListening without permission reports insufficient permissions`() {
         val app = ApplicationProvider.getApplicationContext<Application>()
         shadowOf(app).denyPermissions(Manifest.permission.RECORD_AUDIO)
 
@@ -196,7 +190,7 @@ class SpeechRecognitionServiceTest {
     }
 
     @Test
-    fun transcriptionCompleted_emitsResultsAndTearsDownSession() {
+    fun `transcription completed emits results and tears down session`() {
         service.startListening(Intent(), listener)
         verify(timeout = 1500) { listener.readyForSpeech(any()) }
 
@@ -210,7 +204,7 @@ class SpeechRecognitionServiceTest {
     }
 
     @Test
-    fun startListening_doesNotRequestAudioFocusFromCallingApp() {
+    fun `startListening does not request audio focus from calling app`() {
         service.startListening(Intent(), listener)
         verify(timeout = 1500) { listener.readyForSpeech(any()) }
 
@@ -220,7 +214,7 @@ class SpeechRecognitionServiceTest {
     }
 
     @Test
-    fun onCheckRecognitionSupport_modelsNotReady_marksLanguagesSupportedForDownload() {
+    fun `support check with models not ready marks languages supported for download`() {
         service.modelsReady = false
         val callback = mockk<RecognitionService.SupportCallback>(relaxed = true)
         service.checkRecognitionSupport(Intent(), callback)
@@ -229,8 +223,6 @@ class SpeechRecognitionServiceTest {
         verify(timeout = 1500) { callback.onSupportResult(capture(supportSlot)) }
         val support = supportSlot.captured
 
-        // Models aren't on disk in the test, so all advertised languages
-        // should be supported for download — never installed.
         assertTrue("installed should be empty", support.installedOnDeviceLanguages.isEmpty())
         assertTrue(
             "supported should include 'en'",
@@ -244,7 +236,7 @@ class SpeechRecognitionServiceTest {
     }
 
     @Test
-    fun onCheckRecognitionSupport_requestedRegionalLanguageReturnsExactLocale() {
+    fun `support check returns exact locale for requested regional language`() {
         val callback = mockk<RecognitionService.SupportCallback>(relaxed = true)
         val intent = Intent().putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
 
@@ -259,7 +251,7 @@ class SpeechRecognitionServiceTest {
     }
 
     @Test
-    fun onCheckRecognitionSupport_unsupportedRequestedLanguageReportsError() {
+    fun `support check reports error for unsupported requested language`() {
         val callback = mockk<RecognitionService.SupportCallback>(relaxed = true)
         val intent = Intent().putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ja-JP")
 
@@ -269,7 +261,7 @@ class SpeechRecognitionServiceTest {
     }
 
     @Test
-    fun languageHintTags_deduplicatesAndFiltersUnsupportedLanguages() {
+    fun `language hint tags deduplicate and filter unsupported languages`() {
         val intent = Intent()
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-US")
             .putStringArrayListExtra(
@@ -284,7 +276,7 @@ class SpeechRecognitionServiceTest {
     }
 
     @Test
-    fun triggerModelDownload_supportedLanguageEnqueuesDownload() {
+    fun `model download trigger for supported language enqueues download`() {
         val intent = Intent().putExtra(RecognizerIntent.EXTRA_LANGUAGE, "de-DE")
 
         service.triggerModelDownload(intent)
@@ -293,7 +285,7 @@ class SpeechRecognitionServiceTest {
     }
 
     @Test
-    fun triggerModelDownload_unsupportedLanguageDoesNotEnqueueDownload() {
+    fun `model download trigger for unsupported language does not enqueue download`() {
         val intent = Intent().putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ja-JP")
 
         service.triggerModelDownload(intent)

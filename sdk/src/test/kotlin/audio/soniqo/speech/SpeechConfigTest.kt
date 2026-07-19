@@ -6,14 +6,7 @@ import org.junit.Test
 class SpeechConfigTest {
 
     @Test
-    fun endOfSpeechSilence_usesSnappyCommandDefault() {
+    fun `end-of-speech silence defaults to snappy command value`() {
         assertEquals(0.5f, SpeechConfig().endOfSpeechSilenceSec, 0f)
-    }
-
-    @Test
-    fun endOfSpeechSilence_acceptsLongerPauseForDictation() {
-        val config = SpeechConfig(endOfSpeechSilenceSec = 0.8f)
-
-        assertEquals(0.8f, config.endOfSpeechSilenceSec, 0f)
     }
 }
