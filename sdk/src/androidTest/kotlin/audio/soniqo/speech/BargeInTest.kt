@@ -43,13 +43,35 @@ class BargeInTest {
 
     @Test
     fun bargeInDuringSpeakingEmitsInterrupted() = runBlocking {
+        // Both fixtures are synthesized before the first push: loading a second
+        // TTS instance while the pipeline streams its response can starve the
+        // emulator enough that the response finishes before the interruption lands.
+        // Two duration constraints keep this scenario honest. The command must
+        // echo back as many TTS chunks, because the pipeline is interruptible
+        // only while later chunks are still synthesizing — on fast hardware a
+        // short response leaves Speaking almost immediately after the first
+        // delta. And the interruption must sustain speech past the turn
+        // detector's min_interruption_duration (1 s), or it is discarded as
+        // residual echo.
+        val command = synthesize(
+            "The quick brown fox jumps over the lazy dog. The slow white cat " +
+                "watches the quiet garden. A small bird sings in the tall green " +
+                "tree. The old dog sleeps near the warm stone wall. The red fox " +
+                "runs across the wide open field. A grey mouse hides under the " +
+                "wooden floor. The young child reads a long story. The tall man " +
+                "walks along the sandy river bank."
+        )
+        val interruption = synthesize(
+            "Stop talking now because I have a completely different question to ask you."
+        )
+
         val delta = async(start = CoroutineStart.UNDISPATCHED) {
             withTimeout(90_000) {
                 pipeline.events.first { it is SpeechEvent.ResponseAudioDelta }
             }
         }
 
-        pushRealtime(synthesize("The quick brown fox jumps over the lazy dog."))
+        pushRealtime(command)
         pushRealtime(FloatArray(16000)) // 1 s of silence ends the utterance
 
         delta.await() // pipeline is now speaking its echo response
@@ -59,25 +81,44 @@ class BargeInTest {
                 pipeline.events.first { it is SpeechEvent.ResponseInterrupted }
             }
         }
-        pushRealtime(synthesize("Stop talking now."))
+        pushRealtime(interruption)
 
         assertNotNull(interrupted.await())
     }
 
     @Test
     fun pipelineStableAfterBargeIn() = runBlocking {
+        // Two duration constraints keep this scenario honest. The command must
+        // echo back as many TTS chunks, because the pipeline is interruptible
+        // only while later chunks are still synthesizing — on fast hardware a
+        // short response leaves Speaking almost immediately after the first
+        // delta. And the interruption must sustain speech past the turn
+        // detector's min_interruption_duration (1 s), or it is discarded as
+        // residual echo.
+        val command = synthesize(
+            "The quick brown fox jumps over the lazy dog. The slow white cat " +
+                "watches the quiet garden. A small bird sings in the tall green " +
+                "tree. The old dog sleeps near the warm stone wall. The red fox " +
+                "runs across the wide open field. A grey mouse hides under the " +
+                "wooden floor. The young child reads a long story. The tall man " +
+                "walks along the sandy river bank."
+        )
+        val interruption = synthesize(
+            "Stop talking now because I have a completely different question to ask you."
+        )
+
         val delta = async(start = CoroutineStart.UNDISPATCHED) {
             withTimeout(90_000) {
                 pipeline.events.first { it is SpeechEvent.ResponseAudioDelta }
             }
         }
 
-        pushRealtime(synthesize("The quick brown fox jumps over the lazy dog."))
+        pushRealtime(command)
         pushRealtime(FloatArray(16000))
 
         delta.await()
 
-        pushRealtime(synthesize("Stop talking now."))
+        pushRealtime(interruption)
         delay(2_000)
         pipeline.resumeListening()
 
