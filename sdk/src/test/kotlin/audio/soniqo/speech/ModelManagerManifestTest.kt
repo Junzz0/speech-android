@@ -17,7 +17,7 @@ import org.junit.Test
 class ModelManagerManifestTest {
 
     @Test
-    fun speechConfigDefault_usesLowMemoryParakeetEou() {
+    fun `default SpeechConfig uses low-memory Parakeet EOU`() {
         assertEquals(SttModel.PARAKEET_EOU, SpeechConfig().sttModel)
         assertEquals(TtsModel.KOKORO_SHORT_TURN, SpeechConfig().ttsModel)
         assertFalse(SpeechConfig().useNnapi)
@@ -26,7 +26,7 @@ class ModelManagerManifestTest {
     }
 
     @Test
-    fun ttsNativeIds_areStable() {
+    fun `tts native ids are stable`() {
         assertEquals(0, TtsModel.KOKORO.nativeId)
         assertEquals(1, TtsModel.SUPERTONIC.nativeId)
         assertEquals(2, TtsModel.KOKORO_SHORT_TURN.nativeId)
@@ -34,7 +34,7 @@ class ModelManagerManifestTest {
     }
 
     @Test
-    fun defaultSttManifest_usesParakeetEouBundle() {
+    fun `default stt manifest uses Parakeet EOU bundle`() {
         val eouFiles = modelFiles(sttModel = SttModel.PARAKEET_EOU)
             .filter { it.repo == "Parakeet-EOU-120M-ONNX-INT8" }
 
@@ -50,7 +50,7 @@ class ModelManagerManifestTest {
     }
 
     @Test
-    fun modelSetKey_changesWhenSttModelChanges() {
+    fun `model set key changes when stt model changes`() {
         assertNotEquals(
             modelSetKey(sttModel = SttModel.PARAKEET_EOU),
             modelSetKey(sttModel = SttModel.PARAKEET),
@@ -58,7 +58,7 @@ class ModelManagerManifestTest {
     }
 
     @Test
-    fun modelDirName_separatesNonDefaultModelSets() {
+    fun `model dir name separates non-default model sets`() {
         assertEquals(
             "models",
             modelDirName(sttModel = SttModel.PARAKEET_EOU),
@@ -70,8 +70,8 @@ class ModelManagerManifestTest {
     }
 
     @Test
-    fun ttsOnlyManifest_usesKokoroFilesWithoutPipelineAssets() {
-        val files = ttsModelFiles(TtsModel.KOKORO)
+    fun `tts-only manifest uses Kokoro files without pipeline assets`() {
+        val files = ModelManager.ttsModels(TtsModel.KOKORO)
 
         assertEquals(
             listOf(
@@ -96,18 +96,18 @@ class ModelManagerManifestTest {
     }
 
     @Test
-    fun kokoroProfiles_shareAssetsCachesAndWorkerName() {
+    fun `kokoro profiles share assets caches and worker name`() {
         assertEquals(
-            ttsModelFiles(TtsModel.KOKORO),
-            ttsModelFiles(TtsModel.KOKORO_SHORT_TURN),
+            ModelManager.ttsModels(TtsModel.KOKORO),
+            ModelManager.ttsModels(TtsModel.KOKORO_SHORT_TURN),
         )
         assertEquals(
             modelSetKey(ttsModel = TtsModel.KOKORO),
             modelSetKey(ttsModel = TtsModel.KOKORO_SHORT_TURN),
         )
         assertEquals(
-            ttsModelSetKey(TtsModel.KOKORO),
-            ttsModelSetKey(TtsModel.KOKORO_SHORT_TURN),
+            ModelManager.ttsModelSetKey(TtsModel.KOKORO),
+            ModelManager.ttsModelSetKey(TtsModel.KOKORO_SHORT_TURN),
         )
         assertEquals(
             modelDirName(ttsModel = TtsModel.KOKORO),
@@ -118,25 +118,25 @@ class ModelManagerManifestTest {
             ModelDownloadWorker.uniqueName(ttsModel = TtsModel.KOKORO_SHORT_TURN),
         )
         assertNotEquals(
-            ttsModelSetKey(TtsModel.KOKORO_SHORT_TURN),
-            ttsModelSetKey(TtsModel.SUPERTONIC),
+            ModelManager.ttsModelSetKey(TtsModel.KOKORO_SHORT_TURN),
+            ModelManager.ttsModelSetKey(TtsModel.SUPERTONIC),
         )
         assertTrue(
-            ttsModelFiles(TtsModel.KOKORO_SHORT_TURN)
+            ModelManager.ttsModels(TtsModel.KOKORO_SHORT_TURN)
                 .any { it.filename == "kokoro-e2e-realtime.onnx" },
         )
     }
 
     @Test
-    fun ttsOnlyModelSetKey_isSeparateFromPipelineCacheKey() {
+    fun `tts-only model set key is separate from pipeline cache key`() {
         assertNotEquals(
             modelSetKey(ttsModel = TtsModel.KOKORO),
-            ttsModelSetKey(TtsModel.KOKORO),
+            ModelManager.ttsModelSetKey(TtsModel.KOKORO),
         )
     }
 
     @Test
-    fun supertonicManifest_includesCompleteVoiceCatalogFromLiteRtRepo() {
+    fun `supertonic manifest includes complete voice catalog from LiteRT repo`() {
         val styleFiles = modelFiles(ttsModel = TtsModel.SUPERTONIC)
             .filter { it.filename.startsWith("voice_styles/") }
 
@@ -157,8 +157,8 @@ class ModelManagerManifestTest {
     }
 
     @Test
-    fun pocketManifest_isPinnedAndNamespacedAwayFromSttAssets() {
-        val files = ttsModelFiles(TtsModel.POCKET)
+    fun `pocket manifest is pinned and namespaced away from stt assets`() {
+        val files = ModelManager.ttsModels(TtsModel.POCKET)
 
         assertEquals(
             listOf(
@@ -188,15 +188,15 @@ class ModelManagerManifestTest {
     }
 
     @Test
-    fun llmManifest_keepsStandaloneFunctionGemmaAsDefault() {
+    fun `llm manifest keeps standalone FunctionGemma as default`() {
         assertEquals(
             listOf(ModelManager.ModelFile("FunctionGemma-270M-LiteRT-LM", "model.litertlm")),
-            llmModelFiles(LlmModel.FUNCTIONGEMMA),
+            ModelManager.llmModels(LlmModel.FUNCTIONGEMMA),
         )
     }
 
     @Test
-    fun controlLoraManifest_hasSeparateReusableBaseAndAdapter() {
+    fun `control lora manifest has separate reusable base and adapter`() {
         assertEquals(
             listOf(
                 ModelManager.ModelFile(
@@ -208,122 +208,32 @@ class ModelManagerManifestTest {
                     "control-r4-rank16.tflite",
                 ),
             ),
-            llmModelFiles(LlmModel.FUNCTIONGEMMA_CONTROL_LORA),
+            ModelManager.llmModels(LlmModel.FUNCTIONGEMMA_CONTROL_LORA),
         )
     }
 
     @Test
-    fun llmModelSetKey_isSeparateFromPipelineAndTtsCacheKeys() {
-        val stock = llmModelSetKey(LlmModel.FUNCTIONGEMMA)
-        val control = llmModelSetKey(LlmModel.FUNCTIONGEMMA_CONTROL_LORA)
+    fun `llm model set key is separate from pipeline and tts cache keys`() {
+        val stock = ModelManager.llmModelSetKey(LlmModel.FUNCTIONGEMMA)
+        val control = ModelManager.llmModelSetKey(LlmModel.FUNCTIONGEMMA_CONTROL_LORA)
         assertNotEquals(stock, modelSetKey())
-        assertNotEquals(stock, ttsModelSetKey(TtsModel.KOKORO))
+        assertNotEquals(stock, ModelManager.ttsModelSetKey(TtsModel.KOKORO))
         assertNotEquals(stock, control)
     }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun llmModelFiles(llmModel: LlmModel): List<ModelManager.ModelFile> {
-        val method = ModelManager::class.java.getDeclaredMethod(
-            "llmModels",
-            LlmModel::class.java,
-        )
-        method.isAccessible = true
-        return method.invoke(ModelManager, llmModel) as List<ModelManager.ModelFile>
-    }
-
-    private fun llmModelSetKey(llmModel: LlmModel): String {
-        val method = ModelManager::class.java.getDeclaredMethod(
-            "llmModelSetKey",
-            LlmModel::class.java,
-        )
-        method.isAccessible = true
-        return method.invoke(ModelManager, llmModel) as String
-    }
-
-    @Suppress("UNCHECKED_CAST")
     private fun modelFiles(
         sttModel: SttModel = SttModel.PARAKEET_EOU,
         ttsModel: TtsModel = TtsModel.KOKORO,
-    ): List<ModelManager.ModelFile> {
-        val models = ModelManager::class.java.getDeclaredMethod(
-            "models",
-            ModelPrecision::class.java,
-            SttModel::class.java,
-            SttBackend::class.java,
-            TtsModel::class.java,
-        )
-        models.isAccessible = true
-        return models.invoke(
-            ModelManager,
-            ModelPrecision.INT8,
-            sttModel,
-            SttBackend.ONNX,
-            ttsModel,
-        ) as List<ModelManager.ModelFile>
-    }
+    ): List<ModelManager.ModelFile> =
+        ModelManager.models(ModelPrecision.INT8, sttModel, SttBackend.ONNX, ttsModel)
 
     private fun modelSetKey(
-        precision: ModelPrecision = ModelPrecision.INT8,
         sttModel: SttModel = SttModel.PARAKEET_EOU,
-        sttBackend: SttBackend = SttBackend.ONNX,
         ttsModel: TtsModel = TtsModel.KOKORO,
-    ): String {
-        val method = ModelManager::class.java.getDeclaredMethod(
-            "modelSetKey",
-            ModelPrecision::class.java,
-            SttModel::class.java,
-            SttBackend::class.java,
-            TtsModel::class.java,
-        )
-        method.isAccessible = true
-        return method.invoke(
-            ModelManager,
-            precision,
-            sttModel,
-            sttBackend,
-            ttsModel,
-        ) as String
-    }
+    ): String = ModelManager.modelSetKey(ModelPrecision.INT8, sttModel, SttBackend.ONNX, ttsModel)
 
     private fun modelDirName(
-        precision: ModelPrecision = ModelPrecision.INT8,
         sttModel: SttModel = SttModel.PARAKEET_EOU,
-        sttBackend: SttBackend = SttBackend.ONNX,
         ttsModel: TtsModel = TtsModel.KOKORO,
-    ): String {
-        val method = ModelManager::class.java.getDeclaredMethod(
-            "modelDirName",
-            ModelPrecision::class.java,
-            SttModel::class.java,
-            SttBackend::class.java,
-            TtsModel::class.java,
-        )
-        method.isAccessible = true
-        return method.invoke(
-            ModelManager,
-            precision,
-            sttModel,
-            sttBackend,
-            ttsModel,
-        ) as String
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    private fun ttsModelFiles(ttsModel: TtsModel): List<ModelManager.ModelFile> {
-        val method = ModelManager::class.java.getDeclaredMethod(
-            "ttsModels",
-            TtsModel::class.java,
-        )
-        method.isAccessible = true
-        return method.invoke(ModelManager, ttsModel) as List<ModelManager.ModelFile>
-    }
-
-    private fun ttsModelSetKey(ttsModel: TtsModel): String {
-        val method = ModelManager::class.java.getDeclaredMethod(
-            "ttsModelSetKey",
-            TtsModel::class.java,
-        )
-        method.isAccessible = true
-        return method.invoke(ModelManager, ttsModel) as String
-    }
+    ): String = ModelManager.modelDirName(ModelPrecision.INT8, sttModel, SttBackend.ONNX, ttsModel)
 }

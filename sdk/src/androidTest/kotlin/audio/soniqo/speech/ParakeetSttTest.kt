@@ -15,13 +15,9 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * E2E test: Parakeet TDT 0.6B speech recognition on device.
- *
- * Verifies that:
- * - Encoder + decoder models load and produce transcriptions
- * - Speech-like audio triggers VAD → STT pipeline
- * - Transcription contains expected text (accuracy check)
- * - Pipeline state transitions work correctly
+ * On-device Parakeet TDT STT through the full pipeline: synthesized English
+ * speech must transcribe with the expected key words, and silence must not
+ * produce spurious text.
  */
 @RunWith(AndroidJUnit4::class)
 class ParakeetSttTest {

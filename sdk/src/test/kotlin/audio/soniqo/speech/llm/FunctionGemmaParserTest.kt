@@ -51,4 +51,11 @@ class FunctionGemmaParserTest {
     @Test fun `no call returns empty list`() {
         assertTrue(FunctionGemmaParser.parseFunctionCalls("hello world").isEmpty())
     }
+
+    @Test fun `rejects body without brace or with junk name`() {
+        assertTrue(FunctionGemmaParser.parseFunctionCalls(
+            "<start_function_call>no braces here<end_function_call>").isEmpty())
+        assertTrue(FunctionGemmaParser.parseFunctionCalls(
+            "<start_function_call>some junk text {x:1}<end_function_call>").isEmpty())
+    }
 }

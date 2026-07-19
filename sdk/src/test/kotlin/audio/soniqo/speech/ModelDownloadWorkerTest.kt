@@ -22,13 +22,9 @@ import org.robolectric.annotation.Config
 import java.io.IOException
 
 /**
- * Robolectric tests for [ModelDownloadWorker].
- *
- * Mocks the [ModelManager] singleton via mockk so the worker can be exercised
- * without touching the network or the file system. Uses
- * [TestListenableWorkerBuilder] which gives the worker a real `Context` and
- * stubs out the `setForeground` / `setProgress` plumbing — sufficient to
- * assert the doWork() result contract.
+ * Robolectric tests for [ModelDownloadWorker]. Mocks the [ModelManager]
+ * singleton so the worker's doWork() contract can be asserted without network
+ * or file-system access.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
@@ -48,7 +44,7 @@ class ModelDownloadWorkerTest {
     }
 
     @Test
-    fun doWork_success_returnsModelDirInOutputData() = runBlocking {
+    fun `success returns model dir in output data`() = runBlocking {
         coEvery {
             ModelManager.ensureModels(any(), any(), any(), any(), any(), any())
         } returns "/fake/model/dir"
@@ -65,9 +61,9 @@ class ModelDownloadWorkerTest {
     }
 
     @Test
-    fun doWork_ioException_returnsRetry() = runBlocking {
-        // The worker should bubble transient network/disk failures up to
-        // WorkManager so it reschedules with exponential backoff.
+    fun `io exception returns retry`() = runBlocking {
+        // Transient network/disk failures go back to WorkManager so it
+        // reschedules with exponential backoff.
         coEvery {
             ModelManager.ensureModels(any(), any(), any(), any(), any(), any())
         } throws IOException("network down")
@@ -79,10 +75,9 @@ class ModelDownloadWorkerTest {
     }
 
     @Test
-    fun doWork_genericThrowable_returnsFailureWithMessage() = runBlocking {
-        // Non-IO exceptions are not transient (e.g. corrupt manifest, OOM)
-        // — emit Failure with the message in outputData so the host activity
-        // can surface a useful error.
+    fun `generic throwable returns failure with message`() = runBlocking {
+        // Non-IO exceptions are not transient — Failure carries the message so
+        // the host activity can surface it.
         coEvery {
             ModelManager.ensureModels(any(), any(), any(), any(), any(), any())
         } throws IllegalStateException("models corrupt")
@@ -96,49 +91,21 @@ class ModelDownloadWorkerTest {
     }
 
     @Test
-    fun doWork_invalidPrecisionInput_defaultsToInt8() = runBlocking {
+    fun `missing or invalid inputs fall back to INT8 and short-turn Kokoro`() = runBlocking {
         coEvery {
             ModelManager.ensureModels(any(), any(), any(), any(), any(), any())
         } returns "/fake"
 
-        val worker = TestListenableWorkerBuilder<ModelDownloadWorker>(context)
+        TestListenableWorkerBuilder<ModelDownloadWorker>(context).build().doWork()
+        TestListenableWorkerBuilder<ModelDownloadWorker>(context)
             .setInputData(workDataOf(ModelDownloadWorker.KEY_PRECISION to "NOT_A_PRECISION"))
             .build()
+            .doWork()
 
-        worker.doWork()
-
-        coVerify(exactly = 1) {
-            ModelManager.ensureModels(any(), ModelPrecision.INT8, any(), any(), any(), any())
-        }
-    }
-
-    @Test
-    fun doWork_missingPrecisionInput_defaultsToInt8() = runBlocking {
-        coEvery {
-            ModelManager.ensureModels(any(), any(), any(), any(), any(), any())
-        } returns "/fake"
-
-        val worker = TestListenableWorkerBuilder<ModelDownloadWorker>(context).build()
-        worker.doWork()
-
-        coVerify(exactly = 1) {
-            ModelManager.ensureModels(any(), ModelPrecision.INT8, any(), any(), any(), any())
-        }
-    }
-
-    @Test
-    fun doWork_missingTtsModelInput_defaultsToShortTurnKokoro() = runBlocking {
-        coEvery {
-            ModelManager.ensureModels(any(), any(), any(), any(), any(), any())
-        } returns "/fake"
-
-        val worker = TestListenableWorkerBuilder<ModelDownloadWorker>(context).build()
-        worker.doWork()
-
-        coVerify(exactly = 1) {
+        coVerify(exactly = 2) {
             ModelManager.ensureModels(
                 any(),
-                any(),
+                ModelPrecision.INT8,
                 any(),
                 any(),
                 TtsModel.KOKORO_SHORT_TURN,
@@ -148,7 +115,7 @@ class ModelDownloadWorkerTest {
     }
 
     @Test
-    fun doWork_modelInputs_arePassedToModelManager() = runBlocking {
+    fun `model inputs are passed to ModelManager`() = runBlocking {
         coEvery {
             ModelManager.ensureModels(any(), any(), any(), any(), any(), any())
         } returns "/fake"
@@ -177,7 +144,7 @@ class ModelDownloadWorkerTest {
     }
 
     @Test
-    fun doWork_controlLoraInput_downloadsSelectedLlmProfile() = runBlocking {
+    fun `control lora input downloads selected llm profile`() = runBlocking {
         coEvery {
             ModelManager.ensureModels(any(), any(), any(), any(), any(), any())
         } returns "/fake"
@@ -205,7 +172,7 @@ class ModelDownloadWorkerTest {
     }
 
     @Test
-    fun request_buildsRequestWithModelInputDataAndNoNetworkConstraint() {
+    fun `request builds input data without network constraint`() {
         val req = ModelDownloadWorker.request(
             precision = ModelPrecision.INT8,
             sttModel = SttModel.PARAKEET,
@@ -245,7 +212,7 @@ class ModelDownloadWorkerTest {
     }
 
     @Test
-    fun request_defaultUsesShortTurnKokoro() {
+    fun `request defaults to short-turn Kokoro`() {
         val req = ModelDownloadWorker.request()
 
         assertEquals(
@@ -255,7 +222,7 @@ class ModelDownloadWorkerTest {
     }
 
     @Test
-    fun uniqueName_includesNonDefaultModelSet() {
+    fun `unique name includes non-default model set`() {
         assertEquals(
             ModelDownloadWorker.UNIQUE_NAME,
             ModelDownloadWorker.uniqueName(),

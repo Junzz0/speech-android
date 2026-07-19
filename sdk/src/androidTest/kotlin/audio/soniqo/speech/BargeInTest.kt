@@ -2,21 +2,24 @@ package audio.soniqo.speech
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.flow.first
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 /**
- * Barge-in / interruption tests.
- *
- * Shares a single pipeline across tests to avoid OOM from loading
- * models multiple times in the same test process.
+ * Barge-in / interruption tests. Uses synthesized speech so the full
+ * VAD -> STT -> TTS chain actually runs; one pipeline per test to avoid OOM
+ * from concurrent model loads.
  */
 @RunWith(AndroidJUnit4::class)
 class BargeInTest {
@@ -38,79 +41,104 @@ class BargeInTest {
         pipeline.close()
     }
 
-    private fun speechSignal(durationSec: Int = 2, freqHz: Double = 200.0): FloatArray {
-        val sr = 16000
-        return FloatArray(sr * durationSec) { i ->
-            val t = i.toFloat() / sr
-            (0.3f * Math.sin(2.0 * Math.PI * freqHz * t)).toFloat()
-        }
-    }
-
-    private fun silenceSignal(): FloatArray = FloatArray(16000)
-
-    private fun pushChunked(audio: FloatArray) {
-        for (offset in audio.indices step 512) {
-            val end = minOf(offset + 512, audio.size)
-            val chunk = audio.sliceArray(offset until end)
-            if (chunk.size == 512) pipeline.pushAudio(chunk)
-        }
-    }
-
     @Test
     fun bargeInDuringSpeakingEmitsInterrupted() = runBlocking {
-        pushChunked(speechSignal(freqHz = 220.0))
-        pushChunked(silenceSignal())
-
-        try {
-            withTimeout(30_000) {
+        val delta = async(start = CoroutineStart.UNDISPATCHED) {
+            withTimeout(90_000) {
                 pipeline.events.first { it is SpeechEvent.ResponseAudioDelta }
             }
+        }
 
-            // Barge-in while speaking
-            pushChunked(speechSignal(durationSec = 1, freqHz = 250.0))
+        pushRealtime(synthesize("The quick brown fox jumps over the lazy dog."))
+        pushRealtime(FloatArray(16000)) // 1 s of silence ends the utterance
 
-            val interrupted = withTimeout(10_000) {
+        delta.await() // pipeline is now speaking its echo response
+
+        val interrupted = async(start = CoroutineStart.UNDISPATCHED) {
+            withTimeout(30_000) {
                 pipeline.events.first { it is SpeechEvent.ResponseInterrupted }
             }
-            assertNotNull("ResponseInterrupted should be emitted", interrupted)
-        } catch (_: Exception) {
-            // Synthetic signal may not trigger full chain
         }
+        pushRealtime(synthesize("Stop talking now."))
+
+        assertNotNull(interrupted.await())
     }
 
     @Test
     fun pipelineStableAfterBargeIn() = runBlocking {
-        pushChunked(speechSignal())
-        pushChunked(silenceSignal())
-
-        try {
-            withTimeout(30_000) {
+        val delta = async(start = CoroutineStart.UNDISPATCHED) {
+            withTimeout(90_000) {
                 pipeline.events.first { it is SpeechEvent.ResponseAudioDelta }
             }
-
-            pushChunked(speechSignal(durationSec = 1, freqHz = 250.0))
-            delay(2_000)
-            pipeline.resumeListening()
-
-            assertTrue(
-                "Pipeline should be in Idle or Listening after barge-in recovery",
-                pipeline.state == PipelineState.Idle || pipeline.state == PipelineState.Listening
-            )
-        } catch (_: Exception) {
-            // Synthetic signal may not trigger full chain
         }
+
+        pushRealtime(synthesize("The quick brown fox jumps over the lazy dog."))
+        pushRealtime(FloatArray(16000))
+
+        delta.await()
+
+        pushRealtime(synthesize("Stop talking now."))
+        delay(2_000)
+        pipeline.resumeListening()
+
+        assertTrue(
+            "Pipeline should be in Idle or Listening after barge-in recovery, " +
+                "was ${pipeline.state}",
+            pipeline.state == PipelineState.Idle || pipeline.state == PipelineState.Listening
+        )
     }
 
     @Test
     fun resumeListeningAfterInterruption() = runBlocking {
-        pushChunked(speechSignal(durationSec = 1))
+        val sr = 16000
+        val tone = FloatArray(sr) { i ->
+            (0.3f * Math.sin(2.0 * Math.PI * 200.0 * i / sr)).toFloat()
+        }
+        pushRealtime(tone)
         pipeline.resumeListening()
 
         assertTrue(
-            "Pipeline should be in a valid state after resumeListening",
+            "Pipeline should be in a valid state after resumeListening, was ${pipeline.state}",
             pipeline.state == PipelineState.Idle ||
             pipeline.state == PipelineState.Listening ||
             pipeline.state == PipelineState.Transcribing
         )
+    }
+
+    private suspend fun pushRealtime(audio: FloatArray) {
+        for (offset in audio.indices step 512) {
+            val end = minOf(offset + 512, audio.size)
+            val chunk = audio.sliceArray(offset until end)
+            if (chunk.size == 512) {
+                pipeline.pushAudio(chunk)
+                delay(32) // 512 samples @ 16 kHz
+            }
+        }
+    }
+
+    private fun synthesize(text: String): FloatArray =
+        SpeechSynthesizer(SpeechSynthesizerConfig(modelDir = modelDir, useNnapi = false)).use {
+            val spoken = it.synthesize(text, "en")
+            assertTrue("synthesized fixture should not be empty", spoken.pcm16.isNotEmpty())
+            pcm16ToFloat16k(spoken.pcm16, spoken.sampleRate)
+        }
+
+    private fun pcm16ToFloat16k(pcm16: ByteArray, sourceSampleRate: Int): FloatArray {
+        val shorts = ShortArray(pcm16.size / 2)
+        ByteBuffer.wrap(pcm16)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .asShortBuffer()
+            .get(shorts)
+        val source = FloatArray(shorts.size) { i -> shorts[i] / 32768.0f }
+        if (sourceSampleRate == 16000) return source
+
+        val outputSize = ((source.size.toLong() * 16000L) / sourceSampleRate).toInt()
+        return FloatArray(outputSize) { i ->
+            val src = i.toDouble() * sourceSampleRate.toDouble() / 16000.0
+            val lo = src.toInt().coerceIn(0, source.lastIndex)
+            val hi = minOf(lo + 1, source.lastIndex)
+            val frac = (src - lo).toFloat()
+            source[lo] * (1.0f - frac) + source[hi] * frac
+        }
     }
 }

@@ -43,7 +43,7 @@ class FunctionGemmaTest {
     )
 
     @Test
-    fun rawRuntime_receivesCanonicalDeveloperTurnPrompt() {
+    fun `raw runtime receives canonical developer-turn prompt`() {
         val runtime = CapturingRuntime(appliesChatTemplate = false)
         FunctionGemma(runtime).generateToolCall("set temp to 21", tools)
 
@@ -61,7 +61,7 @@ class FunctionGemmaTest {
     }
 
     @Test
-    fun templatingRuntime_receivesBareDeclarationsAndText() {
+    fun `templating runtime receives bare declarations and text`() {
         val runtime = CapturingRuntime(appliesChatTemplate = true)
         FunctionGemma(runtime).generateToolCall("set temp to 21", tools)
 
@@ -72,7 +72,7 @@ class FunctionGemmaTest {
     }
 
     @Test
-    fun parse_acceptsBareFunctionNameWithoutCallPrefix() {
+    fun `parse accepts bare function name without call prefix`() {
         // The released FunctionGemma-270M weights emit `NAME {args}` without
         // the `call:` prefix from the training-format spec (seen on-device).
         val response = "<start_function_call>call_contact {name:<escape>Anna<escape>," +
@@ -85,15 +85,7 @@ class FunctionGemmaTest {
     }
 
     @Test
-    fun parse_rejectsBodyWithoutBraceOrWithJunkName() {
-        assertTrue(FunctionGemmaParser.parseFunctionCalls(
-            "<start_function_call>no braces here<end_function_call>").isEmpty())
-        assertTrue(FunctionGemmaParser.parseFunctionCalls(
-            "<start_function_call>some junk text {x:1}<end_function_call>").isEmpty())
-    }
-
-    @Test
-    fun parse_toleratesNewlinesAroundCallBody() {
+    fun `parse tolerates newlines around call body`() {
         // litertlm-android's Conversation output puts the call body on its
         // own line after the marker (seen on-device with 0.14.0).
         val response = "<start_function_call>\n" +
@@ -106,7 +98,7 @@ class FunctionGemmaTest {
     }
 
     @Test
-    fun generateAndParse_roundTripsAToolCall() {
+    fun `generate and parse round-trips a tool call`() {
         val response = "<start_function_call>call:set_temperature{celsius:21," +
             "say:<escape>Temperature set to 21 degrees.<escape>}<end_function_call>"
         val gemma = FunctionGemma(CapturingRuntime(appliesChatTemplate = true, response = response))

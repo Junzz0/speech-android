@@ -2,6 +2,7 @@ package audio.soniqo.speech
 
 import android.content.Context
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -40,7 +41,8 @@ object ModelManager {
         .followSslRedirects(true)
         .build()
 
-    private fun models(
+    @VisibleForTesting
+    internal fun models(
         precision: ModelPrecision,
         sttModel: SttModel = SttModel.PARAKEET_EOU,
         sttBackend: SttBackend = SttBackend.ONNX,
@@ -114,7 +116,8 @@ object ModelManager {
         // Note: FP32 Parakeet encoder also needs parakeet-encoder.onnx.data.
     }
 
-    private fun ttsModels(ttsModel: TtsModel): List<ModelFile> = when (ttsModel) {
+    @VisibleForTesting
+    internal fun ttsModels(ttsModel: TtsModel): List<ModelFile> = when (ttsModel) {
         TtsModel.KOKORO, TtsModel.KOKORO_SHORT_TURN -> listOf(
             // Both graph profiles share one external weight blob. Keeping both
             // protos in the same cache makes profile switches a ~2.6 MB fetch,
@@ -169,7 +172,8 @@ object ModelManager {
     // FunctionGemma is kept out of the pipeline model set: only agent demos
     // opt in via [ensureLlmModels]. The Control profile downloads one reusable
     // LoRA-capable base and its small adapter as distinct files.
-    private fun llmModels(llmModel: LlmModel): List<ModelFile> = when (llmModel) {
+    @VisibleForTesting
+    internal fun llmModels(llmModel: LlmModel): List<ModelFile> = when (llmModel) {
         LlmModel.FUNCTIONGEMMA -> listOf(
             ModelFile("FunctionGemma-270M-LiteRT-LM", "model.litertlm"),
         )
@@ -468,7 +472,8 @@ object ModelManager {
         }
     }
 
-    private fun modelSetKey(
+    @VisibleForTesting
+    internal fun modelSetKey(
         precision: ModelPrecision,
         sttModel: SttModel,
         sttBackend: SttBackend,
@@ -489,7 +494,8 @@ object ModelManager {
         ttsModel: TtsModel,
     ): File = File(context.filesDir, modelDirName(precision, sttModel, sttBackend, ttsModel))
 
-    private fun modelDirName(
+    @VisibleForTesting
+    internal fun modelDirName(
         precision: ModelPrecision,
         sttModel: SttModel,
         sttBackend: SttBackend,
@@ -512,7 +518,8 @@ object ModelManager {
         ).joinToString("-").lowercase()
     }
 
-    private fun ttsModelSetKey(ttsModel: TtsModel): String = listOf(
+    @VisibleForTesting
+    internal fun ttsModelSetKey(ttsModel: TtsModel): String = listOf(
         "v$MODEL_VERSION",
         "profile=TTS",
         "tts=${ttsCacheName(ttsModel)}",
@@ -521,7 +528,8 @@ object ModelManager {
     private fun ttsCacheName(ttsModel: TtsModel): String =
         if (ttsModel.isKokoro) TtsModel.KOKORO.name else ttsModel.name
 
-    private fun llmModelSetKey(llmModel: LlmModel): String = listOf(
+    @VisibleForTesting
+    internal fun llmModelSetKey(llmModel: LlmModel): String = listOf(
         "v$MODEL_VERSION",
         "profile=LLM",
         "llm=${llmModel.name}",
@@ -540,12 +548,20 @@ object ModelManager {
         }
     }
 
-    private fun downloadFile(url: String, dest: File, onBytes: (downloaded: Long, fileTotal: Long) -> Unit) {
+    @VisibleForTesting
+    internal fun downloadFile(
+        url: String,
+        dest: File,
+        client: OkHttpClient = this.client,
+        maxRetries: Int = MAX_RETRIES,
+        retryDelayMs: Long = RETRY_DELAY_MS,
+        onBytes: (downloaded: Long, fileTotal: Long) -> Unit,
+    ) {
         val tmp = File(dest.parentFile, "${dest.name}.tmp")
 
         var lastException: IOException? = null
 
-        for (attempt in 1..MAX_RETRIES) {
+        for (attempt in 1..maxRetries) {
             try {
                 val existingBytes = if (tmp.exists()) tmp.length() else 0L
 
@@ -624,10 +640,10 @@ object ModelManager {
 
             } catch (e: IOException) {
                 lastException = e
-                if (attempt < MAX_RETRIES) {
+                if (attempt < maxRetries) {
                     // Longer backoff for server errors (503 etc.)
                     val isServerError = e.message?.contains("temporarily unavailable") == true
-                    val delay = if (isServerError) RETRY_DELAY_MS * attempt * 3 else RETRY_DELAY_MS * attempt
+                    val delay = if (isServerError) retryDelayMs * attempt * 3 else retryDelayMs * attempt
                     Thread.sleep(delay)
                 }
             }
@@ -638,7 +654,7 @@ object ModelManager {
         // Range: header. Particularly important when called from
         // ModelDownloadWorker, where Result.retry() spins up a fresh
         // ensureModels() invocation after WorkManager's backoff window.
-        throw IOException("Download failed after $MAX_RETRIES attempts: ${lastException?.message}", lastException)
+        throw IOException("Download failed after $maxRetries attempts: ${lastException?.message}", lastException)
     }
 
     // ONNX files start with these bytes (protobuf magic for ONNX IR)
