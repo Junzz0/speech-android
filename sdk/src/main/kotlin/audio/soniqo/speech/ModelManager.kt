@@ -704,20 +704,54 @@ object ModelManager {
                 val contentLength = body.contentLength()
                 val isResume = response.code == 206
 
-                // Full file size: on a 206 resume, contentLength is only the
-                // remaining range, so add what's already on disk. 0 means the
-                // server didn't advertise a length (progress stays file-count
-                // based for this file).
-                val fileTotal = when {
-                    contentLength <= 0 -> 0L
-                    isResume -> existingBytes + contentLength
-                    else -> contentLength
+                // A 206 must identify exactly which bytes it carries. Without
+                // a valid Content-Range, appending is unsafe: a broken CDN may
+                // have returned the full body from byte 0.
+                val contentRange = if (isResume) {
+                    parseContentRange(response.header("Content-Range"))
+                } else {
+                    null
+                }
+                if (isResume && contentRange == null) {
+                    response.close()
+                    discardPartial(tmp)
+                    throw IOException("Invalid or missing Content-Range for HTTP 206")
                 }
 
-                FileOutputStream(tmp, isResume).use { output ->
+                // A response starting at zero is a usable clean restart. Any
+                // other unexpected offset lacks the prefix needed to build a
+                // complete file, so discard it and retry without Range.
+                if (
+                    contentRange != null &&
+                    contentRange.start != existingBytes &&
+                    contentRange.start != 0L
+                ) {
+                    val rangeStart = contentRange.start
+                    response.close()
+                    discardPartial(tmp)
+                    throw IOException(
+                        "Unexpected Content-Range start: asked $existingBytes, got $rangeStart"
+                    )
+                }
+
+                val append = contentRange != null && contentRange.start == existingBytes
+                if (isResume && !append) {
+                    LOGI(
+                        "Range ignored by server " +
+                            "(asked $existingBytes, got ${contentRange?.start}); restarting"
+                    )
+                }
+                val fileTotal = when {
+                    contentRange != null -> contentRange.total
+                    contentLength <= 0 -> 0L
+                    else -> contentLength
+                }
+                val bytesBeforeResponse = if (append) existingBytes else 0L
+
+                FileOutputStream(tmp, append).use { output ->
                     body.byteStream().use { input ->
                         val buf = ByteArray(65536)
-                        var total = if (isResume) existingBytes else 0L
+                        var total = bytesBeforeResponse
                         var lastReported = -1L
                         onBytes(total, fileTotal)
                         while (true) {
@@ -737,10 +771,25 @@ object ModelManager {
 
                 response.close()
 
-                // Validate downloaded size if Content-Length was provided
-                if (!isResume && contentLength > 0 && tmp.length() != contentLength) {
+                val responseBytes = tmp.length() - bytesBeforeResponse
+                if (contentRange != null && responseBytes != contentRange.length) {
+                    if (responseBytes > contentRange.length) {
+                        discardPartial(tmp)
+                    }
                     throw IOException(
-                        "Incomplete download: got ${tmp.length()} bytes, expected $contentLength"
+                        "Incomplete download range: got $responseBytes bytes, " +
+                            "expected ${contentRange.length}"
+                    )
+                }
+
+                // Validate the finished size whenever the server told us what
+                // to expect. This used to skip the resume path entirely, so a
+                // resumed transfer that ended short was renamed into place as
+                // if complete — producing a file that passes the header check
+                // and then fails to parse at load time.
+                if (fileTotal > 0 && tmp.length() != fileTotal) {
+                    throw IOException(
+                        "Incomplete download: got ${tmp.length()} bytes, expected $fileTotal"
                     )
                 }
 
@@ -816,6 +865,33 @@ object ModelManager {
 
     private fun expectedBytes(model: ModelFile): Long =
         EXPECTED_SIZES[model.filename] ?: DEFAULT_EXPECTED_BYTES
+
+    private data class ContentRange(
+        val start: Long,
+        val endInclusive: Long,
+        val total: Long,
+    ) {
+        val length: Long
+            get() = endInclusive - start + 1L
+    }
+
+    private val CONTENT_RANGE_PATTERN =
+        Regex("""bytes\s+(\d+)-(\d+)/(\d+)""", RegexOption.IGNORE_CASE)
+
+    private fun parseContentRange(value: String?): ContentRange? {
+        val match = CONTENT_RANGE_PATTERN.matchEntire(value?.trim() ?: "") ?: return null
+        val start = match.groupValues[1].toLongOrNull() ?: return null
+        val endInclusive = match.groupValues[2].toLongOrNull() ?: return null
+        val total = match.groupValues[3].toLongOrNull() ?: return null
+        if (start > endInclusive || endInclusive >= total) return null
+        return ContentRange(start, endInclusive, total)
+    }
+
+    private fun discardPartial(file: File) {
+        if (file.exists() && !file.delete()) {
+            FileOutputStream(file, false).use {}
+        }
+    }
 
     // ONNX files start with these bytes (protobuf magic for ONNX IR)
     private val ONNX_MAGIC = byteArrayOf(0x08, 0x0)
