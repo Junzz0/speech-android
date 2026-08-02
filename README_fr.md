@@ -29,7 +29,7 @@ Ce dépôt fournit le **packaging Android** : SDK Kotlin, pont JNI, application 
 | --- | --- | --- | --- | --- |
 | [Parakeet-EOU 120M](https://soniqo.audio/fr/guides/dictate) | STT streaming + EOU (défaut) | [153 Mo](https://huggingface.co/soniqo/Parakeet-EOU-120M-ONNX-INT8) | 232 Mo | 25 |
 | [Parakeet TDT v3](https://soniqo.audio/fr/guides/parakeet/android) | STT large couverture (optionnel) | [891 Mo](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | ~1,1-1,3 Go | 114 |
-| [Canary 180M Flash](https://huggingface.co/soniqo/Canary-180M-Flash-ONNX) | STT hors ligne + traduction (optionnel) | [273 MB](https://huggingface.co/soniqo/Canary-180M-Flash-ONNX) | pas encore mesuré | 4 (en, de, es, fr) |
+| [Canary 180M Flash](https://huggingface.co/soniqo/Canary-180M-Flash-ONNX) | STT hors ligne + traduction (optionnel) | [273 MB](https://huggingface.co/soniqo/Canary-180M-Flash-ONNX) | ~780 MB | 4 (en, de, es, fr) |
 | [Kokoro 82M](https://soniqo.audio/fr/guides/kokoro/android) | Synthèse vocale (défaut) | [330 Mo](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | 640 Mo | 8 (en, fr, es, it, pt, hi, ja, zh) |
 | [Pocket TTS 100M](https://huggingface.co/soniqo/Pocket-TTS-100M-ONNX-INT8) | Synthèse vocale streaming (optionnel, voix Alba fixe) | ~126 Mo | pas encore mesuré | Anglais |
 | [Supertonic-3](https://soniqo.audio/fr/guides/supertonic) | Synthèse vocale (LiteRT, flow-matching, G2P-free, 44,1 kHz) | [~380 Mo](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 Mo | 31 |
@@ -53,7 +53,7 @@ Téléchargez l'[APK signé](https://github.com/soniqo/speech-android/releases/l
 
 ```kotlin
 dependencies {
-    implementation("audio.soniqo:speech:0.0.14")
+    implementation("audio.soniqo:speech:0.0.15")
 }
 ```
 
