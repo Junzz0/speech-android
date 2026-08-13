@@ -62,10 +62,10 @@ data class SpeechConfig(
     /** Pipeline behavior after transcription. See [PipelineMode]. */
     val pipelineMode: PipelineMode = PipelineMode.ECHO,
 
-    /** Language/locale for prompt-conditioned STT models (Nemotron) and TTS
-     *  voice selection: e.g. "en-US", "fr", "ja-JP". "auto" lets the model
-     *  decide. Parakeet TDT always autodetects — the transducer has no
-     *  forcing mechanism, matching every other Parakeet runtime. */
+    /** Language/locale for prompt-conditioned STT models: e.g. "en-US", "fr",
+     *  "zh-CN". "auto" lets the model decide. Parakeet TDT and Parakeet-EOU
+     *  always autodetect and reject a concrete value because neither model has
+     *  a language-prompt input. */
     val language: String = "auto",
 
     /** Enable noise cancellation (DeepFilterNet3). */
@@ -80,9 +80,10 @@ data class SpeechConfig(
     /** Interval between partial transcriptions in seconds. */
     val partialTranscriptionInterval: Float = 0.5f,
 
-    /** Reserved language shortlist for future prompt-conditioned backends.
-     *  No current STT backend consumes it: Nemotron takes a single
-     *  [language], and Parakeet TDT always autodetects. */
+    /** Reserved for a future backend that can constrain automatic detection.
+     *  No current STT backend consumes a shortlist, so a non-empty value is
+     *  rejected instead of being silently ignored. Nemotron takes one
+     *  [language]; both Parakeet models always autodetect. */
     val languageHints: List<String> = emptyList(),
 
     /** RNN-T beam width for the Parakeet-EOU streaming STT. `<= 1` keeps the
@@ -97,3 +98,29 @@ data class SpeechConfig(
      *  sentence — and get cut off early. */
     val endOfSpeechSilenceSec: Float = 0.5f,
 )
+
+/** Validate language settings before JNI loads models or starts native work. */
+internal fun SpeechConfig.requireValidLanguageConfiguration() {
+    val requested = language.trim()
+    val base = requested.substringBefore('-').substringBefore('_').lowercase()
+
+    require(base != "cn") {
+        "SpeechConfig.language='$language' uses the country code 'cn', not a " +
+            "Chinese language tag. Use 'zh-CN' for Simplified Chinese or " +
+            "'zh-TW' for Traditional Chinese."
+    }
+    require(languageHints.isEmpty()) {
+        "SpeechConfig.languageHints is not supported by any current STT backend. " +
+            "Parakeet models always auto-detect; for one fixed language select " +
+            "SttModel.NEMOTRON_MULTILINGUAL and set SpeechConfig.language."
+    }
+
+    val automatic = requested.isEmpty() || requested == "auto"
+    if (sttModel == SttModel.PARAKEET || sttModel == SttModel.PARAKEET_EOU) {
+        require(automatic) {
+            "${sttModel.name} always auto-detects language and cannot honor " +
+                "SpeechConfig.language='$language'. For a fixed language select " +
+                "SttModel.NEMOTRON_MULTILINGUAL (for Chinese, use 'zh-CN' or 'zh-TW')."
+        }
+    }
+}

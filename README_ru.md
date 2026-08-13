@@ -4,7 +4,7 @@
 
 Локальный речевой SDK для Android, основанный на [ONNX Runtime](https://onnxruntime.ai) и [speech-core](https://github.com/soniqo/speech-core).
 
-Потоковое распознавание речи с низким потреблением памяти (25 языков по умолчанию, TDT на 114 языков опционально), синтез речи, определение голосовой активности и шумоподавление — всё работает локально. Никаких облачных API, никакие данные не покидают устройство.
+Потоковое распознавание речи с низким потреблением памяти и опциональная более крупная TDT-модель, обе для 25 европейских языков, а также синтез речи, определение голосовой активности и шумоподавление — всё работает локально. Никаких облачных API, никакие данные не покидают устройство.
 
 **[📚 Документация Android](https://soniqo.audio/ru/getting-started/android)**
 
@@ -28,7 +28,8 @@
 | Модель | Задача | Загрузка | Пиковая память | Языки |
 | --- | --- | --- | --- | --- |
 | [Parakeet-EOU 120M](https://soniqo.audio/ru/guides/dictate) | Потоковый STT + EOU (по умолчанию) | [153 МБ](https://huggingface.co/soniqo/Parakeet-EOU-120M-ONNX-INT8) | 232 МБ | 25 |
-| [Parakeet TDT v3](https://soniqo.audio/ru/guides/parakeet/android) | STT с широким покрытием (опционально) | [891 МБ](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | ~1,1-1,3 ГБ | 114 |
+| [Parakeet TDT v3](https://soniqo.audio/ru/guides/parakeet/android) | STT с широким покрытием (опционально) | [891 МБ](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | ~1,1-1,3 ГБ | 25 европейских |
+| [Nemotron-3.5 multilingual](https://soniqo.audio/ru/guides/nemotron) | Потоковый STT с управлением через промпт (опционально) | [~721 МБ](https://huggingface.co/soniqo/Nemotron-3.5-ASR-Streaming-Multilingual-0.6B-LiteRT-INT8) | ещё не измерено | более 100 (включая zh) |
 | [Canary 180M Flash](https://huggingface.co/soniqo/Canary-180M-Flash-ONNX) | Офлайн STT + перевод (опционально) | [273 MB](https://huggingface.co/soniqo/Canary-180M-Flash-ONNX) | ~780 MB | 4 (en, de, es, fr) |
 | [Kokoro 82M](https://soniqo.audio/ru/guides/kokoro/android) | Синтез речи (по умолчанию) | [330 МБ](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | 640 МБ | 8 (en, fr, es, it, pt, hi, ja, zh) |
 | [Pocket TTS 100M](https://huggingface.co/soniqo/Pocket-TTS-100M-ONNX-INT8) | Потоковый синтез речи (опционально, фиксированный голос Alba) | ~126 МБ | ещё не измерено | Английский |
@@ -39,9 +40,25 @@
 
 Модели загружаются автоматически при первом запуске через `ModelManager.ensureModels()`.
 
-`SpeechConfig()` по умолчанию использует `SttModel.PARAKEET_EOU` и `TtsModel.KOKORO_SHORT_TURN`, чтобы интеграции SDK и системный распознаватель работали по низкопамятному Android-пути. Демо-приложение выбирает `SttModel.PARAKEET`, поэтому экраны эха и диктовки используют более крупную TDT-модель на 114 языков.
+`SpeechConfig()` по умолчанию использует `SttModel.PARAKEET_EOU` и `TtsModel.KOKORO_SHORT_TURN`, чтобы интеграции SDK и системный распознаватель работали по низкопамятному Android-пути. Демо-приложение выбирает `SttModel.PARAKEET`, поэтому экраны эха и диктовки используют более крупную TDT-модель для 25 европейских языков.
 
-Для распознавания с фокусом на языки используйте `SpeechConfig(sttModel = SttModel.PARAKEET, languageHints = listOf("en", "fr"))`. Задайте `language = "en"`, если нужно зафиксировать один язык.
+Обе модели Parakeet всегда определяют язык автоматически: ни одна не принимает `language` или `languageHints`, и ни одна не поддерживает китайский. Чтобы выбрать один язык, включая мандаринский китайский, используйте управляемый промптом backend Nemotron:
+
+```kotlin
+val sttModel = SttModel.NEMOTRON_MULTILINGUAL
+val sttBackend = SttBackend.LITERT
+val modelDir = ModelManager.ensureModels(
+    context,
+    sttModel = sttModel,
+    sttBackend = sttBackend,
+)
+val config = SpeechConfig(
+    modelDir = modelDir,
+    sttModel = sttModel,
+    sttBackend = sttBackend,
+    language = "zh-CN", // или "zh-TW"
+)
+```
 
 **Supertonic-3** — это опциональный многоязычный TTS повышенного качества: выберите его через `SpeechConfig(ttsModel = TtsModel.SUPERTONIC)` (требуется бэкенд LiteRT). Хост выполняет его четыре неавторегрессионных flow-matching-графа на устройстве на частоте 44,1 кГц; фронтенд работает G2P-free (NFKD + индекс Unicode — без фонемизатора), поэтому все 31 язык проходят через один путь.
 
@@ -101,7 +118,7 @@ cd speech-android
 - Эхо-режим: транскрибирует речь и синтезирует её обратно (без LLM)
 - Режим диктовки: потоковые частичные результаты
 - Голосовой оверлей: плавающая кнопка микрофона для диктовки в любом приложении
-- Parakeet TDT STT на 114 языков в экранах эха и диктовки
+- Parakeet TDT STT для 25 европейских языков в экранах эха и диктовки
 - Тестовый экран `SpeechRecognizer` — задействует системный путь голосового ввода
 - UI с пузырями чата и отображением задержки STT/TTS
 

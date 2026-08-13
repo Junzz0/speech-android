@@ -4,7 +4,7 @@
 
 [ONNX Runtime](https://onnxruntime.ai)와 [speech-core](https://github.com/soniqo/speech-core) 기반의 Android용 온디바이스 음성 SDK.
 
-저메모리 스트리밍 음성 인식(기본 25개 언어, 114개 언어 TDT는 선택), 텍스트 음성 변환, 음성 활동 감지, 노이즈 캔슬링 — 모두 로컬에서 실행됩니다. 클라우드 API도, 디바이스 외부로 전송되는 데이터도 없습니다.
+저메모리 스트리밍 음성 인식과 선택 가능한 대형 TDT 모델(둘 다 유럽 25개 언어 지원), 텍스트 음성 변환, 음성 활동 감지, 노이즈 캔슬링 — 모두 로컬에서 실행됩니다. 클라우드 API도, 디바이스 외부로 전송되는 데이터도 없습니다.
 
 **[📚 Android 문서](https://soniqo.audio/ko/getting-started/android)**
 
@@ -28,7 +28,8 @@
 | 모델 | 작업 | 다운로드 | 피크 메모리 | 언어 |
 | --- | --- | --- | --- | --- |
 | [Parakeet-EOU 120M](https://soniqo.audio/ko/guides/dictate) | 스트리밍 STT + EOU(기본) | [153 MB](https://huggingface.co/soniqo/Parakeet-EOU-120M-ONNX-INT8) | 232 MB | 25 |
-| [Parakeet TDT v3](https://soniqo.audio/ko/guides/parakeet/android) | 광범위 STT(선택) | [891 MB](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | ~1.1-1.3 GB | 114 |
+| [Parakeet TDT v3](https://soniqo.audio/ko/guides/parakeet/android) | 광범위 STT(선택) | [891 MB](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | ~1.1-1.3 GB | 유럽 25개 언어 |
+| [Nemotron-3.5 다국어](https://soniqo.audio/ko/guides/nemotron) | 프롬프트 조건부 스트리밍 STT(선택) | [~721 MB](https://huggingface.co/soniqo/Nemotron-3.5-ASR-Streaming-Multilingual-0.6B-LiteRT-INT8) | 미측정 | 100개 이상(zh 포함) |
 | [Canary 180M Flash](https://huggingface.co/soniqo/Canary-180M-Flash-ONNX) | 오프라인 STT + 번역 (선택) | [273 MB](https://huggingface.co/soniqo/Canary-180M-Flash-ONNX) | ~780 MB | 4 (en, de, es, fr) |
 | [Kokoro 82M](https://soniqo.audio/ko/guides/kokoro/android) | 텍스트 음성 변환(기본) | [330 MB](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | 640 MB | 8(en, fr, es, it, pt, hi, ja, zh) |
 | [Pocket TTS 100M](https://huggingface.co/soniqo/Pocket-TTS-100M-ONNX-INT8) | 스트리밍 음성 합성(선택, 고정 Alba 음성) | ~126 MB | 미측정 | 영어 |
@@ -39,9 +40,25 @@
 
 모델은 `ModelManager.ensureModels()`를 통해 첫 실행 시 자동으로 다운로드됩니다.
 
-`SpeechConfig()`는 `SttModel.PARAKEET_EOU`와 `TtsModel.KOKORO_SHORT_TURN`를 기본값으로 사용해 SDK 통합과 시스템 인식 서비스를 저메모리 Android 경로에서 실행합니다. 데모 앱은 `SttModel.PARAKEET`를 선택해 에코와 받아쓰기 화면에서 더 큰 114개 언어 TDT 모델을 사용합니다.
+`SpeechConfig()`는 `SttModel.PARAKEET_EOU`와 `TtsModel.KOKORO_SHORT_TURN`를 기본값으로 사용해 SDK 통합과 시스템 인식 서비스를 저메모리 Android 경로에서 실행합니다. 데모 앱은 `SttModel.PARAKEET`를 선택해 에코와 받아쓰기 화면에서 유럽 25개 언어를 지원하는 더 큰 TDT 모델을 사용합니다.
 
-언어 중심 인식에는 `SpeechConfig(sttModel = SttModel.PARAKEET, languageHints = listOf("en", "fr"))`를 사용하세요. 하나의 언어로 고정하려면 `language = "en"`을 설정하세요.
+두 Parakeet 모델은 항상 언어를 자동 감지합니다. `language`나 `languageHints`를 받지 않으며 중국어도 지원하지 않습니다. 중국어를 포함한 하나의 언어를 지정하려면 프롬프트 조건부 Nemotron 백엔드를 사용하세요:
+
+```kotlin
+val sttModel = SttModel.NEMOTRON_MULTILINGUAL
+val sttBackend = SttBackend.LITERT
+val modelDir = ModelManager.ensureModels(
+    context,
+    sttModel = sttModel,
+    sttBackend = sttBackend,
+)
+val config = SpeechConfig(
+    modelDir = modelDir,
+    sttModel = sttModel,
+    sttBackend = sttBackend,
+    language = "zh-CN", // 또는 "zh-TW"
+)
+```
 
 **Supertonic-3**는 옵트인 방식의 더 높은 품질의 다국어 TTS입니다 — `SpeechConfig(ttsModel = TtsModel.SUPERTONIC)`로 선택하세요(LiteRT 백엔드가 필요합니다). 호스트는 4개의 비자기회귀(non-autoregressive) flow-matching 그래프를 44.1 kHz로 온디바이스에서 실행합니다. 프런트엔드는 G2P-free(NFKD + 유니코드 인덱스 — 음소 변환기 없음)이므로 31개 언어 모두 하나의 경로를 통과합니다.
 
@@ -101,7 +118,7 @@ cd speech-android
 - 에코 모드: 음성을 전사하고 다시 합성(LLM 없음)
 - 받아쓰기 모드: 스트리밍 부분 결과
 - 음성 오버레이: 어떤 앱에나 받아쓸 수 있는 플로팅 마이크 버튼
-- 에코와 받아쓰기 화면에서 114개 언어 Parakeet TDT STT 사용
+- 에코와 받아쓰기 화면에서 유럽 25개 언어를 지원하는 Parakeet TDT STT 사용
 - `SpeechRecognizer` 테스트 화면 — 시스템 전체 음성 입력 경로 실행
 - STT/TTS 지연 시간 표시가 있는 채팅 버블 UI
 

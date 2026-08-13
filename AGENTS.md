@@ -68,7 +68,7 @@ ONNX models hosted on HuggingFace under [`aufklarer/`](https://huggingface.co/au
 org. INT8 quantized by default.
 
 - `soniqo/Silero-VAD-v5-ONNX` — VAD
-- `soniqo/Parakeet-TDT-v3-ONNX` — STT (114 languages, 8192 BPE vocab)
+- `soniqo/Parakeet-TDT-v3-ONNX` — STT (25 European languages, 8192 BPE vocab)
 - `soniqo/Kokoro-82M-ONNX` — TTS + phonemizer dicts + voice embeddings
 - `soniqo/Pocket-TTS-100M-ONNX-INT8` — streaming English TTS, fixed Alba voice
 - `soniqo/DeepFilterNet3-ONNX` — noise enhancer

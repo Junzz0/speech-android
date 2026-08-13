@@ -113,12 +113,6 @@ class ControlAgentActivity : ComponentActivity() {
 
     private fun activeStt(): SttModel =
         sttOverride?.let { runCatching { SttModel.valueOf(it) }.getOrNull() } ?: DEMO_STT
-    // Drives the TTS language (and Nemotron's prompt slot if ever selected).
-    // Parakeet STT autodetects regardless — like every other Parakeet
-    // runtime, there is no language forcing, so accented speech can
-    // occasionally decode into a non-Latin script on the multilingual TDT.
-    private fun activeLanguage(): String = "en"
-
     // Contextual-biasing phrases for the STT beam search: the fixed command
     // grammar and the brand, plus the track titles/artists currently on the
     // device. The command core is always present; without media permission
@@ -164,7 +158,7 @@ class ControlAgentActivity : ComponentActivity() {
 
         // STT model for the demo. PARAKEET_EOU is the low-memory default
         // (25 languages, ~232 MB) — fast, ~2 s round trip, ~1.3 GB total.
-        // PARAKEET is Parakeet-TDT v3 (114 languages, auto-detect) but
+        // PARAKEET is Parakeet-TDT v3 (25 European languages, auto-detect) but
         // ~891 MB download and ~2 GB total, which is ~5× slower under
         // emulation and needs a real device with an NPU to feel good.
         private val DEMO_STT = SttModel.PARAKEET_EOU
@@ -392,7 +386,6 @@ class ControlAgentActivity : ComponentActivity() {
                     ttsModel = DEMO_TTS,
                     pipelineMode = PipelineMode.TRANSCRIBE_ONLY,
                     emitPartialTranscriptions = true,
-                    language = activeLanguage(),
                     // 0.5 s default cut people off mid-command on-device —
                     // dictated digits and thinking pauses exceed it easily.
                     endOfSpeechSilenceSec = 0.8f,

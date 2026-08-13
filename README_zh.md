@@ -4,7 +4,7 @@
 
 适用于 Android 的设备端语音 SDK,基于 [ONNX Runtime](https://onnxruntime.ai) 和 [speech-core](https://github.com/soniqo/speech-core) 构建。
 
-低内存流式语音识别(默认 25 种语言,可选 114 语言 TDT)、文本转语音、语音活动检测和噪声消除——全部在本地运行。无需云端 API,数据不会离开设备。
+低内存流式语音识别和可选的大型 TDT 模型（两者均覆盖 25 种欧洲语言），以及文本转语音、语音活动检测和噪声消除——全部在本地运行。无需云端 API,数据不会离开设备。
 
 **[📚 Android 文档](https://soniqo.audio/zh/getting-started/android)**
 
@@ -28,7 +28,8 @@
 | 模型 | 任务 | 下载大小 | 峰值内存 | 语言 |
 | --- | --- | --- | --- | --- |
 | [Parakeet-EOU 120M](https://soniqo.audio/zh/guides/dictate) | 流式 STT + 端点检测(默认) | [153 MB](https://huggingface.co/soniqo/Parakeet-EOU-120M-ONNX-INT8) | 232 MB | 25 |
-| [Parakeet TDT v3](https://soniqo.audio/zh/guides/parakeet/android) | 广覆盖 STT(可选) | [891 MB](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | ~1.1-1.3 GB | 114 |
+| [Parakeet TDT v3](https://soniqo.audio/zh/guides/parakeet/android) | 广覆盖 STT(可选) | [891 MB](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | ~1.1-1.3 GB | 25 种欧洲语言 |
+| [Nemotron-3.5 多语言](https://soniqo.audio/zh/guides/nemotron) | 提示词条件流式 STT(可选) | [~721 MB](https://huggingface.co/soniqo/Nemotron-3.5-ASR-Streaming-Multilingual-0.6B-LiteRT-INT8) | 尚未测量 | 100+（包括 zh） |
 | [Canary 180M Flash](https://huggingface.co/soniqo/Canary-180M-Flash-ONNX) | 离线 STT + 翻译（可选） | [273 MB](https://huggingface.co/soniqo/Canary-180M-Flash-ONNX) | ~780 MB | 4 (en, de, es, fr) |
 | [Kokoro 82M](https://soniqo.audio/zh/guides/kokoro/android) | 文本转语音(默认) | [330 MB](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | 640 MB | 8(en、fr、es、it、pt、hi、ja、zh) |
 | [Pocket TTS 100M](https://huggingface.co/soniqo/Pocket-TTS-100M-ONNX-INT8) | 流式文本转语音(可选,固定 Alba 音色) | ~126 MB | 尚未测量 | 英语 |
@@ -39,9 +40,25 @@
 
 模型在首次启动时通过 `ModelManager.ensureModels()` 自动下载。
 
-`SpeechConfig()` 默认使用 `SttModel.PARAKEET_EOU` 和 `TtsModel.KOKORO_SHORT_TURN`,让 SDK 集成和系统识别服务走低内存 Android 路径。演示应用会选用 `SttModel.PARAKEET`,使回声和听写界面使用更大的 114 语言 TDT 模型。
+`SpeechConfig()` 默认使用 `SttModel.PARAKEET_EOU` 和 `TtsModel.KOKORO_SHORT_TURN`,让 SDK 集成和系统识别服务走低内存 Android 路径。演示应用会选用 `SttModel.PARAKEET`,使回声和听写界面使用覆盖 25 种欧洲语言的较大型 TDT 模型。
 
-需要聚焦特定语言时,使用 `SpeechConfig(sttModel = SttModel.PARAKEET, languageHints = listOf("en", "fr"))`。如果只想固定单一语言,设置 `language = "en"`。
+两个 Parakeet 模型始终自动检测语言：它们都不接受 `language` 或 `languageHints`，也都不支持中文。要固定一种语言（包括普通话），请使用提示词条件 Nemotron 后端：
+
+```kotlin
+val sttModel = SttModel.NEMOTRON_MULTILINGUAL
+val sttBackend = SttBackend.LITERT
+val modelDir = ModelManager.ensureModels(
+    context,
+    sttModel = sttModel,
+    sttBackend = sttBackend,
+)
+val config = SpeechConfig(
+    modelDir = modelDir,
+    sttModel = sttModel,
+    sttBackend = sttBackend,
+    language = "zh-CN", // 或 "zh-TW"
+)
+```
 
 **Supertonic-3** 是可选启用的更高质量多语言 TTS — 通过 `SpeechConfig(ttsModel = TtsModel.SUPERTONIC)` 选用(需要 LiteRT 后端)。宿主在设备端以 44.1 kHz 运行其四个非自回归流匹配图;前端免 G2P(NFKD + Unicode 索引 — 无音素转换器),因此全部 31 种语言走同一条路径。
 
@@ -100,7 +117,7 @@ cd speech-android
 - 回声模式:转录语音并将其合成回放(无 LLM)
 - 听写模式:流式部分结果
 - 语音悬浮窗:悬浮麦克风按钮,可向任意应用听写
-- 回声和听写界面使用 114 语言 Parakeet TDT STT
+- 回声和听写界面使用覆盖 25 种欧洲语言的 Parakeet TDT STT
 - `SpeechRecognizer` 测试界面 — 演练系统级语音输入路径
 - 带有 STT/TTS 延迟显示的聊天气泡 UI
 

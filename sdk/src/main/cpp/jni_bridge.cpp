@@ -276,7 +276,16 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
                     dir + "/nemotron-multilingual-decoder.tflite",
                     dir + "/nemotron-multilingual-joint.tflite",
                     dir + "/vocab.json", dir + "/languages.json", nnapi);
-                if (lang != "auto" && !lang.empty()) m->set_language(lang);
+                // The core setter returns false for the special "auto" value
+                // after selecting autoSlot; false means an error only for a
+                // concrete locale.
+                const bool language_found = lang.empty() || m->set_language(lang);
+                if (lang != "auto" && !language_found) {
+                    throw std::invalid_argument(
+                        "Nemotron has no language prompt for '" + lang +
+                        "'; use a locale from languages.json "
+                        "(Chinese: zh-CN or zh-TW)");
+                }
                 h->stt = std::move(m);
 #else
                 throw std::runtime_error("LiteRT STT backend not built into this SDK");
@@ -285,7 +294,16 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
                 auto m = std::make_unique<speech_core::NemotronMultilingualStt>(
                     dir + "/encoder.onnx", dir + "/decoder.onnx", dir + "/joint.onnx",
                     dir + "/vocab.json", dir + "/languages.json", nnapi);
-                if (lang != "auto" && !lang.empty()) m->set_language(lang);
+                // The core setter returns false for the special "auto" value
+                // after selecting autoSlot; false means an error only for a
+                // concrete locale.
+                const bool language_found = lang.empty() || m->set_language(lang);
+                if (lang != "auto" && !language_found) {
+                    throw std::invalid_argument(
+                        "Nemotron has no language prompt for '" + lang +
+                        "'; use a locale from languages.json "
+                        "(Chinese: zh-CN or zh-TW)");
+                }
                 h->stt = std::move(m);
             }
         } else if (sttModel == STT_CANARY) {

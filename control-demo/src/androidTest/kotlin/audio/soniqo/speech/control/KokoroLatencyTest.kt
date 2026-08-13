@@ -100,7 +100,6 @@ class KokoroLatencyTest {
                 modelDir = modelDir.absolutePath,
                 useNnapi = useNnapi,
                 pipelineMode = PipelineMode.TRANSCRIBE_ONLY,
-                language = "en",
             ),
         ).use { pipeline ->
             val start = SystemClock.elapsedRealtimeNanos()
@@ -148,7 +147,6 @@ class KokoroLatencyTest {
                 modelDir = modelDir.absolutePath,
                 useNnapi = useNnapi,
                 pipelineMode = PipelineMode.TRANSCRIBE_ONLY,
-                language = "en",
             ),
         ).use { pipeline ->
             val pieces = SpeechChunks.split(ControlTools.CAPABILITIES_SUMMARY)
