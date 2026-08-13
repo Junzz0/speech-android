@@ -99,7 +99,10 @@ interface SpeechPipeline : AutoCloseable {
     fun cancelSynthesis() {}
 
     companion object {
-        operator fun invoke(config: SpeechConfig): SpeechPipeline = SpeechPipelineImpl(config)
+        operator fun invoke(config: SpeechConfig): SpeechPipeline {
+            config.requireValidLanguageConfiguration()
+            return SpeechPipelineImpl(config)
+        }
     }
 }
 

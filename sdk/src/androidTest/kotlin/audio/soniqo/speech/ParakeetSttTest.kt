@@ -47,8 +47,8 @@ class ParakeetSttTest {
     }
 
     @Test
-    fun sttTranscribesSynthesizedEnglishWithLanguageHints() = runBlocking {
-        val config = parakeetConfig(languageHints = listOf("en-US", "fr"))
+    fun sttAutoDetectsSynthesizedEnglish() = runBlocking {
+        val config = parakeetConfig()
         val pipeline = SpeechPipeline(config)
         try {
             pipeline.start()
@@ -197,22 +197,6 @@ class ParakeetSttTest {
         pipeline.close()
     }
 
-    @Test
-    fun fixedLanguagePipelineStarts() {
-        val config = parakeetConfig(language = "en-US")
-        val pipeline = SpeechPipeline(config)
-
-        assertEquals(PipelineState.Idle, pipeline.state)
-        pipeline.start()
-        assertTrue(
-            pipeline.state == PipelineState.Idle ||
-            pipeline.state == PipelineState.Listening
-        )
-
-        pipeline.stop()
-        pipeline.close()
-    }
-
     private fun pcm16ToFloat16k(pcm16: ByteArray, sourceSampleRate: Int): FloatArray {
         val shorts = ShortArray(pcm16.size / 2)
         ByteBuffer.wrap(pcm16)
@@ -232,14 +216,9 @@ class ParakeetSttTest {
         }
     }
 
-    private fun parakeetConfig(
-        language: String = "auto",
-        languageHints: List<String> = emptyList(),
-    ): SpeechConfig = SpeechConfig(
+    private fun parakeetConfig(): SpeechConfig = SpeechConfig(
         modelDir = modelDir,
         useNnapi = false,
         sttModel = SttModel.PARAKEET,
-        language = language,
-        languageHints = languageHints,
     )
 }

@@ -45,7 +45,6 @@ class PocketTtsLatencyTest {
                 useNnapi = false,
                 ttsModel = TtsModel.POCKET,
                 pipelineMode = PipelineMode.TRANSCRIBE_ONLY,
-                language = "en",
             ),
         ).use { pipeline ->
             val loadMs = elapsedMs(loadStart)
@@ -96,7 +95,6 @@ class PocketTtsLatencyTest {
                 useNnapi = false,
                 ttsModel = TtsModel.POCKET,
                 pipelineMode = PipelineMode.TRANSCRIBE_ONLY,
-                language = "en",
             ),
         ).use { pipeline ->
             synthesizeAndMeasure(pipeline, "Ready when you are.")

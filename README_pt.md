@@ -4,7 +4,7 @@
 
 SDK de voz no dispositivo para Android, baseado em [ONNX Runtime](https://onnxruntime.ai) e [speech-core](https://github.com/soniqo/speech-core).
 
-Reconhecimento de fala em streaming com baixa memória (25 idiomas por padrão, TDT de 114 idiomas opcional), texto para fala, detecção de atividade vocal e cancelamento de ruído — tudo executado localmente. Sem APIs em nuvem, nenhum dado sai do dispositivo.
+Reconhecimento de fala em streaming com baixa memória e um modelo TDT maior opcional, ambos para 25 idiomas europeus, além de texto para fala, detecção de atividade vocal e cancelamento de ruído — tudo executado localmente. Sem APIs em nuvem, nenhum dado sai do dispositivo.
 
 **[📚 Documentação Android](https://soniqo.audio/pt/getting-started/android)**
 
@@ -28,7 +28,8 @@ Este repositório é o **empacotamento Android**: SDK Kotlin, ponte JNI, app de 
 | Modelo | Tarefa | Download | Pico de memória | Idiomas |
 | --- | --- | --- | --- | --- |
 | [Parakeet-EOU 120M](https://soniqo.audio/pt/guides/dictate) | STT em streaming + EOU (padrão) | [153 MB](https://huggingface.co/soniqo/Parakeet-EOU-120M-ONNX-INT8) | 232 MB | 25 |
-| [Parakeet TDT v3](https://soniqo.audio/pt/guides/parakeet/android) | STT de ampla cobertura (opcional) | [891 MB](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | ~1,1-1,3 GB | 114 |
+| [Parakeet TDT v3](https://soniqo.audio/pt/guides/parakeet/android) | STT de ampla cobertura (opcional) | [891 MB](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | ~1,1-1,3 GB | 25 europeus |
+| [Nemotron-3.5 multilíngue](https://soniqo.audio/pt/guides/nemotron) | STT em streaming condicionado por prompt (opcional) | [~721 MB](https://huggingface.co/soniqo/Nemotron-3.5-ASR-Streaming-Multilingual-0.6B-LiteRT-INT8) | ainda não medido | mais de 100 (incluindo zh) |
 | [Canary 180M Flash](https://huggingface.co/soniqo/Canary-180M-Flash-ONNX) | STT offline + tradução (opcional) | [273 MB](https://huggingface.co/soniqo/Canary-180M-Flash-ONNX) | ~780 MB | 4 (en, de, es, fr) |
 | [Kokoro 82M](https://soniqo.audio/pt/guides/kokoro/android) | Texto para fala (padrão) | [330 MB](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | 640 MB | 8 (en, fr, es, it, pt, hi, ja, zh) |
 | [Pocket TTS 100M](https://huggingface.co/soniqo/Pocket-TTS-100M-ONNX-INT8) | Texto para fala em streaming (opcional, voz Alba fixa) | ~126 MB | ainda não medido | Inglês |
@@ -39,9 +40,25 @@ Este repositório é o **empacotamento Android**: SDK Kotlin, ponte JNI, app de 
 
 Os modelos são baixados automaticamente no primeiro lançamento via `ModelManager.ensureModels()`.
 
-`SpeechConfig()` usa `SttModel.PARAKEET_EOU` e `TtsModel.KOKORO_SHORT_TURN` por padrão para manter integrações do SDK e o reconhecedor do sistema no caminho Android de baixa memória. O app demo seleciona `SttModel.PARAKEET` para que as telas de eco e ditado usem o modelo TDT maior de 114 idiomas.
+`SpeechConfig()` usa `SttModel.PARAKEET_EOU` e `TtsModel.KOKORO_SHORT_TURN` por padrão para manter integrações do SDK e o reconhecedor do sistema no caminho Android de baixa memória. O app demo seleciona `SttModel.PARAKEET` para que as telas de eco e ditado usem o modelo TDT maior com 25 idiomas europeus.
 
-Para reconhecimento focado em idiomas, use `SpeechConfig(sttModel = SttModel.PARAKEET, languageHints = listOf("en", "fr"))`. Defina `language = "en"` quando quiser fixar um único idioma.
+Os dois modelos Parakeet sempre detectam o idioma automaticamente: nenhum aceita `language` ou `languageHints`, e nenhum oferece suporte a chinês. Para selecionar um idioma, incluindo mandarim, use o backend Nemotron condicionado por prompt:
+
+```kotlin
+val sttModel = SttModel.NEMOTRON_MULTILINGUAL
+val sttBackend = SttBackend.LITERT
+val modelDir = ModelManager.ensureModels(
+    context,
+    sttModel = sttModel,
+    sttBackend = sttBackend,
+)
+val config = SpeechConfig(
+    modelDir = modelDir,
+    sttModel = sttModel,
+    sttBackend = sttBackend,
+    language = "zh-CN", // ou "zh-TW"
+)
+```
 
 O **Supertonic-3** é um TTS multilíngue opcional de maior qualidade — selecione-o com `SpeechConfig(ttsModel = TtsModel.SUPERTONIC)` (requer o backend LiteRT). O host executa seus quatro grafos de flow-matching não autorregressivos no dispositivo a 44,1 kHz; o front-end é G2P-free (NFKD + índice Unicode — sem phonemizer), de modo que todos os 31 idiomas seguem um único caminho.
 
@@ -101,7 +118,7 @@ O módulo [`app/`](app/) é uma demo mínima de assistente de voz com:
 - Modo eco: transcreve a fala e a sintetiza de volta (sem LLM)
 - Modo ditado: resultados parciais em streaming
 - Sobreposição de voz: botão de microfone flutuante para ditar em qualquer app
-- STT Parakeet TDT de 114 idiomas nas telas de eco e ditado
+- STT Parakeet TDT com 25 idiomas europeus nas telas de eco e ditado
 - Tela de teste `SpeechRecognizer` — exercita o caminho de entrada de voz em todo o sistema
 - UI de bolhas de chat com exibição de latência STT/TTS
 

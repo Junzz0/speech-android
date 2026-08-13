@@ -90,7 +90,6 @@ open class SpeechRecognitionService : RecognitionService() {
         val wantPartial = recognizerIntent
             ?.getBooleanExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false) ?: false
         val requestedLang = recognizerIntent?.let(::requestedLanguageTag)
-        val languageHints = recognizerIntent?.let(::languageHintTags).orEmpty()
         if (requestedLang != null) {
             Log.i(TAG, "EXTRA_LANGUAGE=$requestedLang")
         }
@@ -111,7 +110,7 @@ open class SpeechRecognitionService : RecognitionService() {
 
         scope.launch {
             try {
-                startSession(listener, wantPartial, requestedLang, languageHints)
+                startSession(listener, wantPartial)
             } finally {
                 starting.set(false)
             }
@@ -121,8 +120,6 @@ open class SpeechRecognitionService : RecognitionService() {
     private suspend fun startSession(
         listener: Callback,
         wantPartial: Boolean,
-        requestedLang: String?,
-        languageHints: List<String>,
     ) {
         val pipeline: SpeechPipeline
         val record: AudioRecord
@@ -131,8 +128,10 @@ open class SpeechRecognitionService : RecognitionService() {
             pipeline = createPipeline(
                 SpeechConfig(
                     modelDir = modelDir,
-                    language = requestedLang?.let(::languageBaseTag) ?: "auto",
-                    languageHints = languageHints,
+                    // Parakeet-EOU accepts no language prompt. The framework
+                    // request is still checked against its supported language
+                    // set above, then the model performs automatic detection.
+                    language = "auto",
                     emitPartialTranscriptions = wantPartial,
                 )
             )

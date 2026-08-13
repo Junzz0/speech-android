@@ -4,7 +4,7 @@
 
 Android के लिए ऑन-डिवाइस स्पीच SDK, [ONNX Runtime](https://onnxruntime.ai) और [speech-core](https://github.com/soniqo/speech-core) द्वारा संचालित।
 
-कम-मेमोरी स्ट्रीमिंग स्पीच रिकग्निशन (डिफ़ॉल्ट 25 भाषाएँ, 114-भाषा TDT वैकल्पिक), टेक्स्ट-टू-स्पीच, वॉयस एक्टिविटी डिटेक्शन, और शोर रद्दीकरण — सभी स्थानीय रूप से चलते हैं। कोई क्लाउड API नहीं, कोई डेटा डिवाइस से बाहर नहीं जाता।
+कम-मेमोरी स्ट्रीमिंग स्पीच रिकग्निशन और वैकल्पिक बड़ा TDT मॉडल, दोनों 25 यूरोपीय भाषाओं के लिए, साथ में टेक्स्ट-टू-स्पीच, वॉयस एक्टिविटी डिटेक्शन और शोर रद्दीकरण — सभी स्थानीय रूप से चलते हैं। कोई क्लाउड API नहीं, कोई डेटा डिवाइस से बाहर नहीं जाता।
 
 **[📚 Android दस्तावेज़](https://soniqo.audio/hi/getting-started/android)**
 
@@ -28,7 +28,8 @@ Android के लिए ऑन-डिवाइस स्पीच SDK, [ONNX Ru
 | मॉडल | कार्य | डाउनलोड | पीक मेमोरी | भाषाएँ |
 | --- | --- | --- | --- | --- |
 | [Parakeet-EOU 120M](https://soniqo.audio/hi/guides/dictate) | स्ट्रीमिंग STT + EOU (डिफ़ॉल्ट) | [153 MB](https://huggingface.co/soniqo/Parakeet-EOU-120M-ONNX-INT8) | 232 MB | 25 |
-| [Parakeet TDT v3](https://soniqo.audio/hi/guides/parakeet/android) | व्यापक STT (वैकल्पिक) | [891 MB](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | ~1.1-1.3 GB | 114 |
+| [Parakeet TDT v3](https://soniqo.audio/hi/guides/parakeet/android) | व्यापक STT (वैकल्पिक) | [891 MB](https://huggingface.co/soniqo/Parakeet-TDT-v3-ONNX) | ~1.1-1.3 GB | 25 यूरोपीय |
+| [Nemotron-3.5 बहुभाषी](https://soniqo.audio/hi/guides/nemotron) | प्रॉम्प्ट-कंडीशन्ड स्ट्रीमिंग STT (वैकल्पिक) | [~721 MB](https://huggingface.co/soniqo/Nemotron-3.5-ASR-Streaming-Multilingual-0.6B-LiteRT-INT8) | अभी मापा नहीं गया | 100+ (zh सहित) |
 | [Canary 180M Flash](https://huggingface.co/soniqo/Canary-180M-Flash-ONNX) | Offline STT + translation (optional) | [273 MB](https://huggingface.co/soniqo/Canary-180M-Flash-ONNX) | ~780 MB | 4 (en, de, es, fr) |
 | [Kokoro 82M](https://soniqo.audio/hi/guides/kokoro/android) | टेक्स्ट-टू-स्पीच (डिफ़ॉल्ट) | [330 MB](https://huggingface.co/soniqo/Kokoro-82M-ONNX) | 640 MB | 8 (en, fr, es, it, pt, hi, ja, zh) |
 | [Pocket TTS 100M](https://huggingface.co/soniqo/Pocket-TTS-100M-ONNX-INT8) | स्ट्रीमिंग टेक्स्ट-टू-स्पीच (वैकल्पिक, स्थिर Alba आवाज़) | ~126 MB | अभी मापा नहीं गया | अंग्रेज़ी |
@@ -39,9 +40,25 @@ Android के लिए ऑन-डिवाइस स्पीच SDK, [ONNX Ru
 
 मॉडल पहले लॉन्च पर `ModelManager.ensureModels()` के माध्यम से स्वचालित रूप से डाउनलोड होते हैं।
 
-`SpeechConfig()` डिफ़ॉल्ट रूप से `SttModel.PARAKEET_EOU` और `TtsModel.KOKORO_SHORT_TURN` इस्तेमाल करता है, ताकि SDK इंटीग्रेशन और सिस्टम रिकग्नाइज़र कम-मेमोरी Android पथ पर रहें। डेमो ऐप `SttModel.PARAKEET` चुनता है, इसलिए इको और डिक्टेशन स्क्रीन बड़े 114-भाषा TDT मॉडल का उपयोग करती हैं।
+`SpeechConfig()` डिफ़ॉल्ट रूप से `SttModel.PARAKEET_EOU` और `TtsModel.KOKORO_SHORT_TURN` इस्तेमाल करता है, ताकि SDK इंटीग्रेशन और सिस्टम रिकग्नाइज़र कम-मेमोरी Android पथ पर रहें। डेमो ऐप `SttModel.PARAKEET` चुनता है, इसलिए इको और डिक्टेशन स्क्रीन 25 यूरोपीय भाषाओं वाले बड़े TDT मॉडल का उपयोग करती हैं।
 
-भाषा-केंद्रित रिकग्निशन के लिए `SpeechConfig(sttModel = SttModel.PARAKEET, languageHints = listOf("en", "fr"))` इस्तेमाल करें। केवल एक भाषा तय करनी हो तो `language = "en"` सेट करें।
+दोनों Parakeet मॉडल हमेशा भाषा अपने-आप पहचानते हैं: वे `language` या `languageHints` स्वीकार नहीं करते और चीनी का समर्थन नहीं करते। मंदारिन सहित किसी एक भाषा को चुनने के लिए प्रॉम्प्ट-कंडीशन्ड Nemotron बैकएंड इस्तेमाल करें:
+
+```kotlin
+val sttModel = SttModel.NEMOTRON_MULTILINGUAL
+val sttBackend = SttBackend.LITERT
+val modelDir = ModelManager.ensureModels(
+    context,
+    sttModel = sttModel,
+    sttBackend = sttBackend,
+)
+val config = SpeechConfig(
+    modelDir = modelDir,
+    sttModel = sttModel,
+    sttBackend = sttBackend,
+    language = "zh-CN", // या "zh-TW"
+)
+```
 
 **Supertonic-3** एक ऑप्ट-इन उच्च-गुणवत्ता वाला बहुभाषी TTS है — इसे `SpeechConfig(ttsModel = TtsModel.SUPERTONIC)` के साथ चुनें (LiteRT बैकएंड आवश्यक)। होस्ट इसके चार नॉन-ऑटोरिग्रेसिव फ़्लो-मैचिंग ग्राफ़ ऑन-डिवाइस 44.1 kHz पर चलाता है; फ़्रंट-एंड G2P-free है (NFKD + Unicode इंडेक्स — कोई फ़ोनेमाइज़र नहीं), इसलिए सभी 31 भाषाएँ एक ही पथ से होकर गुजरती हैं।
 
@@ -101,7 +118,7 @@ cd speech-android
 - इको मोड: स्पीच को ट्रांसक्राइब करता है और इसे वापस सिंथेसाइज़ करता है (कोई LLM नहीं)
 - डिक्टेशन मोड: स्ट्रीमिंग आंशिक परिणाम
 - वॉयस ओवरले: किसी भी ऐप में बोलकर लिखने के लिए फ़्लोटिंग माइक बटन
-- इको और डिक्टेशन स्क्रीन में 114-भाषा Parakeet TDT STT
+- इको और डिक्टेशन स्क्रीन में 25 यूरोपीय भाषाओं वाला Parakeet TDT STT
 - `SpeechRecognizer` टेस्ट स्क्रीन — सिस्टम-वाइड वॉयस इनपुट पथ का परीक्षण करता है
 - STT/TTS विलंबता प्रदर्शन के साथ चैट बबल UI
 

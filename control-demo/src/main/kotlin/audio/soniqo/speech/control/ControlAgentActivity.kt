@@ -46,6 +46,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -113,12 +114,6 @@ class ControlAgentActivity : ComponentActivity() {
 
     private fun activeStt(): SttModel =
         sttOverride?.let { runCatching { SttModel.valueOf(it) }.getOrNull() } ?: DEMO_STT
-    // Drives the TTS language (and Nemotron's prompt slot if ever selected).
-    // Parakeet STT autodetects regardless — like every other Parakeet
-    // runtime, there is no language forcing, so accented speech can
-    // occasionally decode into a non-Latin script on the multilingual TDT.
-    private fun activeLanguage(): String = "en"
-
     // Contextual-biasing phrases for the STT beam search: the fixed command
     // grammar and the brand, plus the track titles/artists currently on the
     // device. The command core is always present; without media permission
@@ -164,7 +159,7 @@ class ControlAgentActivity : ComponentActivity() {
 
         // STT model for the demo. PARAKEET_EOU is the low-memory default
         // (25 languages, ~232 MB) — fast, ~2 s round trip, ~1.3 GB total.
-        // PARAKEET is Parakeet-TDT v3 (114 languages, auto-detect) but
+        // PARAKEET is Parakeet-TDT v3 (25 European languages, auto-detect) but
         // ~891 MB download and ~2 GB total, which is ~5× slower under
         // emulation and needs a real device with an NPU to feel good.
         private val DEMO_STT = SttModel.PARAKEET_EOU
@@ -392,7 +387,6 @@ class ControlAgentActivity : ComponentActivity() {
                     ttsModel = DEMO_TTS,
                     pipelineMode = PipelineMode.TRANSCRIBE_ONLY,
                     emitPartialTranscriptions = true,
-                    language = activeLanguage(),
                     // 0.5 s default cut people off mid-command on-device —
                     // dictated digits and thinking pauses exceed it easily.
                     endOfSpeechSilenceSec = 0.8f,
@@ -515,8 +509,21 @@ class ControlAgentActivity : ComponentActivity() {
         }
         val turnId = store.beginTurn(text)
         lifecycleScope.launch(Dispatchers.Default) {
-            try { runAgentTurn(turnId, text, sttMs, voiceAnchored) }
-            finally { turnInFlight.set(false) }
+            try {
+                runAgentTurn(turnId, text, sttMs, voiceAnchored)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "agent turn failed", e)
+                store.updateTurn(turnId) {
+                    it.copy(toolLabel = "turn error: ${e.message}", failed = true)
+                }
+                store.addNote("turn error: ${e.message}")
+                micPaused = false
+                returnToRest()
+            } finally {
+                turnInFlight.set(false)
+            }
         }
     }
 
@@ -706,7 +713,10 @@ class ControlAgentActivity : ComponentActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "TTS failed", e)
             store.addNote("tts error: ${e.message}")
-            micPaused = false; returnToRest(); return
+            micPaused = false
+            returnToRest()
+            executeDeferredAction(outcome, turnId)
+            return
         }
         val presentedMs = firstPresentationMs.get().takeIf { it > 0 } ?: playbackStartMs
         val perf = if (playbackPerformanceMode == android.media.AudioTrack.PERFORMANCE_MODE_LOW_LATENCY) {
@@ -721,6 +731,21 @@ class ControlAgentActivity : ComponentActivity() {
             "round ${System.currentTimeMillis() - turnAnchorMs}ms total")
         micPaused = false
         returnToRest()
+        executeDeferredAction(outcome, turnId)
+    }
+
+    /** Launch actions that intentionally leave this Activity only after TTS. */
+    private suspend fun executeDeferredAction(outcome: ToolOutcome?, turnId: Long) {
+        if (outcome?.deferredAction == null) return
+        try {
+            withContext(Dispatchers.Main.immediate) {
+                ControlTools.executeDeferredAction(outcome, device)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "deferred tool execution failed", e)
+            store.updateTurn(turnId) { it.copy(failed = true) }
+            store.addNote("action error: ${e.message}")
+        }
     }
 
     // -----------------------------------------------------------------------

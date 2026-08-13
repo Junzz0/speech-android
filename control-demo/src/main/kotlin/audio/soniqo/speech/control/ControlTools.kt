@@ -189,18 +189,21 @@ object ControlTools {
                     )
                 } else {
                     device.stopMusic()  // a call takes over audio; stop the music
-                    device.dial(contact.number)
                     ToolOutcome(
                         say ?: "Calling ${contact.name}.",
                         label(call.name, "name" to name),
+                        DeferredDeviceAction.Dial(contact.number),
                     )
                 }
             }
             "dial_number" -> {
                 val number = call.string("number") ?: return null
                 device.stopMusic()  // a call takes over audio; stop the music
-                device.dial(number)
-                ToolOutcome(say ?: "Calling $number.", label(call.name, "number" to number))
+                ToolOutcome(
+                    say ?: "Calling $number.",
+                    label(call.name, "number" to number),
+                    DeferredDeviceAction.Dial(number),
+                )
             }
             "find_contact" -> {
                 val name = call.string("name") ?: return null
@@ -258,6 +261,18 @@ object ControlTools {
             }
             "list_capabilities" -> ToolOutcome(CAPABILITIES_SUMMARY, label(call.name))
             else -> null
+        }
+    }
+
+    /**
+     * Run an external action after its spoken confirmation. Launching another
+     * Activity sooner triggers [android.app.Activity.onStop], which tears down
+     * the demo's AudioTrack while Pocket TTS is still writing to it.
+     */
+    fun executeDeferredAction(outcome: ToolOutcome, device: DeviceActions) {
+        when (val action = outcome.deferredAction) {
+            is DeferredDeviceAction.Dial -> device.dial(action.number)
+            null -> Unit
         }
     }
 

@@ -69,16 +69,20 @@ class ControlToolsTest {
     // ------------------------------------------------------------------
 
     @Test
-    fun callContact_found_dialsAndSpeaksModelSay() {
+    fun callContact_found_defersDialUntilAfterModelSay() {
         val outcome = ControlTools.execute(call(
             "call_contact",
             "name" to ArgumentValue.Str("anna"),
             "say" to ArgumentValue.Str("Calling Anna now."),
         ), device)!!
 
-        assertEquals("+4917612345678", device.dialed)
+        assertNull(device.dialed)
+        assertEquals(DeferredDeviceAction.Dial("+4917612345678"), outcome.deferredAction)
         assertEquals("Calling Anna now.", outcome.spoken)
         assertEquals("call_contact {name: anna}", outcome.label)
+
+        ControlTools.executeDeferredAction(outcome, device)
+        assertEquals("+4917612345678", device.dialed)
     }
 
     @Test
@@ -201,15 +205,19 @@ class ControlToolsTest {
     // ------------------------------------------------------------------
 
     @Test
-    fun dialNumber_dialsAndHonorsSay() {
+    fun dialNumber_defersDialAndHonorsSay() {
         val outcome = ControlTools.execute(call(
             "dial_number",
             "number" to ArgumentValue.Str("+493012345"),
             "say" to ArgumentValue.Str("Dialing."),
         ), device)!!
 
-        assertEquals("+493012345", device.dialed)
+        assertNull(device.dialed)
+        assertEquals(DeferredDeviceAction.Dial("+493012345"), outcome.deferredAction)
         assertEquals("Dialing.", outcome.spoken)
+
+        ControlTools.executeDeferredAction(outcome, device)
+        assertEquals("+493012345", device.dialed)
     }
 
     @Test
@@ -286,9 +294,12 @@ class ControlToolsTest {
     @Test
     fun callingStopsMusicFirst() {
         device.musicPlaying = true
-        ControlTools.execute(call(
+        val outcome = ControlTools.execute(call(
             "call_contact", "name" to ArgumentValue.Str("anna")), device)!!
         assertTrue("a call must stop any playing music", device.stopped)
+        assertNull("the dialer must wait until speech completes", device.dialed)
+
+        ControlTools.executeDeferredAction(outcome, device)
         assertEquals("+4917612345678", device.dialed)
 
         device.stopped = false

@@ -97,27 +97,27 @@ class SpeechRecognitionServiceTest {
     }
 
     @Test
-    fun `requested regional language is accepted`() {
+    fun `requested regional language is accepted with Parakeet auto-detection`() {
         val intent = Intent().putExtra(RecognizerIntent.EXTRA_LANGUAGE, "fr-FR")
 
         service.startListening(intent, listener)
 
         verify(timeout = 1500) { listener.readyForSpeech(any()) }
-        assertEquals("fr", service.lastConfig?.language)
+        assertEquals("auto", service.lastConfig?.language)
     }
 
     @Test
-    fun `requested language preference is accepted`() {
+    fun `requested language preference is accepted with Parakeet auto-detection`() {
         val intent = Intent().putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-US")
 
         service.startListening(intent, listener)
 
         verify(timeout = 1500) { listener.readyForSpeech(any()) }
-        assertEquals("en", service.lastConfig?.language)
+        assertEquals("auto", service.lastConfig?.language)
     }
 
     @Test
-    fun `allowed languages are passed as hints`() {
+    fun `allowed languages do not become unsupported Parakeet hints`() {
         val intent = Intent().putStringArrayListExtra(
             RecognizerIntent.EXTRA_LANGUAGE_DETECTION_ALLOWED_LANGUAGES,
             arrayListOf("fr-FR", "de-DE", "ja-JP"),
@@ -127,11 +127,11 @@ class SpeechRecognitionServiceTest {
 
         verify(timeout = 1500) { listener.readyForSpeech(any()) }
         assertEquals("auto", service.lastConfig?.language)
-        assertEquals(listOf("fr", "de"), service.lastConfig?.languageHints)
+        assertTrue(service.lastConfig?.languageHints.orEmpty().isEmpty())
     }
 
     @Test
-    fun `requested language takes priority over allowed languages`() {
+    fun `requested and allowed languages leave Parakeet in auto-detect mode`() {
         val intent = Intent()
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
             .putStringArrayListExtra(
@@ -142,8 +142,8 @@ class SpeechRecognitionServiceTest {
         service.startListening(intent, listener)
 
         verify(timeout = 1500) { listener.readyForSpeech(any()) }
-        assertEquals("en", service.lastConfig?.language)
-        assertEquals(listOf("en", "fr", "de"), service.lastConfig?.languageHints)
+        assertEquals("auto", service.lastConfig?.language)
+        assertTrue(service.lastConfig?.languageHints.orEmpty().isEmpty())
     }
 
     @Test
