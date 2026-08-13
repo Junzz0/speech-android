@@ -46,6 +46,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -508,8 +509,21 @@ class ControlAgentActivity : ComponentActivity() {
         }
         val turnId = store.beginTurn(text)
         lifecycleScope.launch(Dispatchers.Default) {
-            try { runAgentTurn(turnId, text, sttMs, voiceAnchored) }
-            finally { turnInFlight.set(false) }
+            try {
+                runAgentTurn(turnId, text, sttMs, voiceAnchored)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "agent turn failed", e)
+                store.updateTurn(turnId) {
+                    it.copy(toolLabel = "turn error: ${e.message}", failed = true)
+                }
+                store.addNote("turn error: ${e.message}")
+                micPaused = false
+                returnToRest()
+            } finally {
+                turnInFlight.set(false)
+            }
         }
     }
 
@@ -699,7 +713,10 @@ class ControlAgentActivity : ComponentActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "TTS failed", e)
             store.addNote("tts error: ${e.message}")
-            micPaused = false; returnToRest(); return
+            micPaused = false
+            returnToRest()
+            executeDeferredAction(outcome, turnId)
+            return
         }
         val presentedMs = firstPresentationMs.get().takeIf { it > 0 } ?: playbackStartMs
         val perf = if (playbackPerformanceMode == android.media.AudioTrack.PERFORMANCE_MODE_LOW_LATENCY) {
@@ -714,6 +731,21 @@ class ControlAgentActivity : ComponentActivity() {
             "round ${System.currentTimeMillis() - turnAnchorMs}ms total")
         micPaused = false
         returnToRest()
+        executeDeferredAction(outcome, turnId)
+    }
+
+    /** Launch actions that intentionally leave this Activity only after TTS. */
+    private suspend fun executeDeferredAction(outcome: ToolOutcome?, turnId: Long) {
+        if (outcome?.deferredAction == null) return
+        try {
+            withContext(Dispatchers.Main.immediate) {
+                ControlTools.executeDeferredAction(outcome, device)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "deferred tool execution failed", e)
+            store.updateTurn(turnId) { it.copy(failed = true) }
+            store.addNote("action error: ${e.message}")
+        }
     }
 
     // -----------------------------------------------------------------------

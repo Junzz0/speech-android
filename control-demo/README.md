@@ -33,6 +33,9 @@ Grant microphone access in the app, tap the orb, and try commands such as
 "set volume to three" or "what can you do?" Contact and media commands also
 need their corresponding Android permissions.
 
+Call commands speak their confirmation before opening Android's system dialer;
+the demo never places a call directly.
+
 The footer shows STT, LLM, Pocket first-audio, round-trip, and memory metrics.
 The same data is available for device benchmarks with:
 
