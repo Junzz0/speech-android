@@ -495,7 +495,7 @@ class ControlAgentActivity : ComponentActivity() {
                     runReplay(name)
                 }
             } catch (e: Throwable) {
-                e.rethrowIfProcessFatal()
+                e.rethrowIfUnrecoverable()
                 Log.e(TAG, "init failed", e)
                 store.addNote("init error: ${e.message}")
                 store.setStatus("error")
@@ -549,7 +549,7 @@ class ControlAgentActivity : ComponentActivity() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                e.rethrowIfProcessFatal()
+                e.rethrowIfUnrecoverable()
                 Log.e(TAG, "agent turn failed", e)
                 store.updateTurn(turnId) {
                     it.copy(toolLabel = "turn error: ${e.message}", failed = true)
@@ -603,7 +603,7 @@ class ControlAgentActivity : ComponentActivity() {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            e.rethrowIfProcessFatal()
+            e.rethrowIfUnrecoverable()
             Log.e(TAG, "LLM generation failed", e)
             store.updateTurn(turnId) { it.copy(toolLabel = "llm error: ${e.message}", failed = true) }
             returnToRest(); return
@@ -623,7 +623,7 @@ class ControlAgentActivity : ComponentActivity() {
         val outcome = selectedCall?.let { call ->
             try { ControlTools.execute(call, device) }
             catch (e: Throwable) {
-                e.rethrowIfProcessFatal()
+                e.rethrowIfUnrecoverable()
                 Log.e(TAG, "tool execution failed", e)
                 null
             }
@@ -759,7 +759,7 @@ class ControlAgentActivity : ComponentActivity() {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            e.rethrowIfProcessFatal()
+            e.rethrowIfUnrecoverable()
             Log.e(TAG, "TTS failed", e)
             store.addNote("tts error: ${e.message}")
             micPaused = false
@@ -794,7 +794,7 @@ class ControlAgentActivity : ComponentActivity() {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            e.rethrowIfProcessFatal()
+            e.rethrowIfUnrecoverable()
             Log.e(TAG, "deferred tool execution failed", e)
             store.updateTurn(turnId) { it.copy(failed = true) }
             store.addNote("action error: ${e.message}")
@@ -1254,8 +1254,12 @@ class ControlAgentActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    /** Linkage/assertion errors are reportable; VM failures must retain normal fatal semantics. */
-    private fun Throwable.rethrowIfProcessFatal() {
-        if (this is VirtualMachineError || this is ThreadDeath) throw this
+    /** Recover ordinary/linkage failures while preserving cancellation and fatal semantics. */
+    private fun Throwable.rethrowIfUnrecoverable() {
+        when (this) {
+            is CancellationException -> throw this
+            is Exception, is LinkageError -> Unit
+            else -> throw this
+        }
     }
 }

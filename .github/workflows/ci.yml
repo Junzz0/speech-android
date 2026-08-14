@@ -60,9 +60,45 @@ jobs:
 
       # Compiles the JNI bridge against the pinned speech-core, so a submodule
       # that does not build with the current bridge fails here rather than at
-      # release time.
+      # release time. The minified control APK is intentional: its LiteRT-LM
+      # JNI surface differs from debug after R8 has run.
       - name: Assemble
-        run: ./gradlew :sdk:assembleRelease :app:assembleDebug
+        run: ./gradlew :sdk:assembleRelease :app:assembleDebug :control-demo:assembleRelease
+
+      # LiteRT-LM's native conversation constructor resolves these Kotlin
+      # getters by name. Its AAR has no consumer keep rules, and a release APK
+      # still assembles if R8 removes them; the resulting process abort happens
+      # only when the first command reaches Thinking.
+      - name: Verify LiteRT-LM JNI bindings survive R8
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapping=control-demo/build/outputs/mapping/release/mapping.txt
+
+          assert_kept_member() {
+            local class_name="$1"
+            local member_name="$2"
+            if ! awk -v class_name="$class_name" -v member_name="$member_name" '
+              $0 == class_name " -> " class_name ":" { inside = 1; next }
+              inside && $0 ~ /^[^#[:space:]].* -> .*:$/ { exit }
+              inside && index($0, " " member_name "(") &&
+                $0 ~ (" -> " member_name "$") { found = 1; exit }
+              END { if (!found) exit 1 }
+            ' "$mapping"; then
+              echo "::error file=$mapping::R8 removed or renamed $class_name.$member_name"
+              exit 1
+            fi
+          }
+
+          sampler=com.google.ai.edge.litertlm.SamplerConfig
+          assert_kept_member "$sampler" getTopK
+          assert_kept_member "$sampler" getTopP
+          assert_kept_member "$sampler" getTemperature
+          assert_kept_member "$sampler" getSeed
+
+          thinking=com.google.ai.edge.litertlm.ThinkingConfig
+          assert_kept_member "$thinking" getEnableThinking
+          assert_kept_member "$thinking" getThinkingTokenBudget
 
       - name: Upload test reports
         if: always()
