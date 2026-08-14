@@ -55,6 +55,10 @@ class SileroVadTest {
 
     @Test
     fun synthesizedSpeechTriggersSpeechStartedAndEnded() = runBlocking {
+        // Fixture generation is deliberately outside the event timeouts. On a
+        // loaded emulator Kokoro can take longer than 30 seconds, but VAD has
+        // not received any audio yet and therefore has nothing to detect.
+        val audio = synthesize("The quick brown fox jumps over the lazy dog.")
         val pipeline = SpeechPipeline(SpeechConfig(modelDir = modelDir, useNnapi = false))
         try {
             pipeline.start()
@@ -69,7 +73,6 @@ class SileroVadTest {
                 }
             }
 
-            val audio = synthesize("The quick brown fox jumps over the lazy dog.")
             for (offset in audio.indices step 512) {
                 val end = minOf(offset + 512, audio.size)
                 val chunk = audio.sliceArray(offset until end)
