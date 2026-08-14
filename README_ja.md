@@ -70,7 +70,7 @@ val config = SpeechConfig(
 
 ```kotlin
 dependencies {
-    implementation("audio.soniqo:speech:0.0.16")
+    implementation("audio.soniqo:speech:0.0.17")
 }
 ```
 
