@@ -99,6 +99,7 @@ class ControlAgentActivity : ComponentActivity() {
     private val store = ControlStore()
     private val device = AndroidDeviceActions()
     private val memory = MemoryMonitor()
+    private val exitDiagnostics by lazy { ProcessExitDiagnostics(this) }
 
     private var pipelineStarted = false
     private var observingDownload = false
@@ -185,6 +186,18 @@ class ControlAgentActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val previousExit = exitDiagnostics.consumePreviousExit()
+        store.setDiagnosticsReport(
+            buildDiagnosticsReport(
+                "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                previousExit,
+            )
+        )
+        previousExit?.summaryLine()?.let { summary ->
+            Log.e(TAG, summary)
+            store.addNote("$summary · open ⓘ to share diagnostics")
+        }
+        exitDiagnostics.markPhase("initializing")
         if (acceptsDebugIntents) {
             pendingCommand = intent?.getStringExtra("command")
             pendingReplay = if (pendingCommand == null) {
@@ -211,6 +224,7 @@ class ControlAgentActivity : ComponentActivity() {
                         onDismissType = { store.setTypeDialog(false) },
                         onOpenInfo = { store.setInfoDialog(true) },
                         onDismissInfo = { store.setInfoDialog(false) },
+                        onShareDiagnostics = ::shareDiagnostics,
                     ),
                 )
             }
@@ -282,6 +296,21 @@ class ControlAgentActivity : ComponentActivity() {
         store.setMemory(memory.currentMb(), memory.peakMb)
     }
 
+    private fun shareDiagnostics() {
+        val report = store.state.value.diagnosticsReport ?: return
+        val share = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "Soniqo Control diagnostics")
+            putExtra(Intent.EXTRA_TEXT, report)
+        }
+        runCatching {
+            startActivity(Intent.createChooser(share, "Share diagnostics"))
+        }.onFailure {
+            Log.e(TAG, "Unable to share diagnostics", it)
+            store.addNote("could not open Android's share sheet")
+        }
+    }
+
     /** Friendly stage name for a model file, so the status reads "downloading
      *  transcription model" instead of "downloading parakeet-eou-encoder.onnx". */
     private fun modelLabel(file: String): String = when {
@@ -301,6 +330,7 @@ class ControlAgentActivity : ComponentActivity() {
 
     /** Rest state after a turn: keep listening if the mic is live, else idle. */
     private fun returnToRest() {
+        exitDiagnostics.markPhase(if (recording) "listening" else "idle")
         store.setMic(if (recording) MicState.LISTENING else MicState.IDLE)
         store.setStatus(if (recording) "listening" else "tap to talk")
     }
@@ -310,6 +340,7 @@ class ControlAgentActivity : ComponentActivity() {
     // -----------------------------------------------------------------------
 
     private fun loadModels() {
+        exitDiagnostics.markPhase("downloading_models")
         store.setStatus("downloading models")
         store.setDownload(0)
         // includeLlm = true: the FunctionGemma bundle downloads in this same
@@ -378,6 +409,7 @@ class ControlAgentActivity : ComponentActivity() {
     private fun initEverything(modelDir: String) {
         lifecycleScope.launch(Dispatchers.Default) {
             try {
+                exitDiagnostics.markPhase("loading_pipeline")
                 store.setStatus("loading pipeline")
                 store.setDownloadStage(null)
                 val p = SpeechPipeline(SpeechConfig(
@@ -435,6 +467,7 @@ class ControlAgentActivity : ComponentActivity() {
                     ModelManager.llmAdapterFile(applicationContext, llmProfile),
                 ) { "Control LLM profile is missing its adapter" }
                 store.setStatus("loading LLM engine")
+                exitDiagnostics.markPhase("loading_llm")
                 val runtime = LiteRtLmRuntime(llmPath, adapterPath)
                 runtime.initialize()
                 llmRuntime = runtime
@@ -447,6 +480,7 @@ class ControlAgentActivity : ComponentActivity() {
                 }
 
                 ready = true
+                exitDiagnostics.markPhase("ready")
                 store.setDownload(null)
                 store.setDownloadDetail(null)
                 store.setMic(MicState.IDLE)
@@ -461,6 +495,7 @@ class ControlAgentActivity : ComponentActivity() {
                     runReplay(name)
                 }
             } catch (e: Throwable) {
+                e.rethrowIfProcessFatal()
                 Log.e(TAG, "init failed", e)
                 store.addNote("init error: ${e.message}")
                 store.setStatus("error")
@@ -513,7 +548,8 @@ class ControlAgentActivity : ComponentActivity() {
                 runAgentTurn(turnId, text, sttMs, voiceAnchored)
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                e.rethrowIfProcessFatal()
                 Log.e(TAG, "agent turn failed", e)
                 store.updateTurn(turnId) {
                     it.copy(toolLabel = "turn error: ${e.message}", failed = true)
@@ -546,6 +582,7 @@ class ControlAgentActivity : ComponentActivity() {
 
         store.setMic(MicState.THINKING)
         store.setStatus("thinking")
+        exitDiagnostics.markPhase("thinking")
         val llmStart = System.currentTimeMillis()
         val turnAnchorMs = if (voiceAnchored && speechEndMs > 0) speechEndMs else llmStart
 
@@ -563,13 +600,17 @@ class ControlAgentActivity : ComponentActivity() {
             // state-filtered function names and current music state.
             val runtime = llmRuntime ?: error("LLM runtime not ready")
             runtime.generate(CompactPrompt.format(tools, musicPlaying, prompt), 128)
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            e.rethrowIfProcessFatal()
             Log.e(TAG, "LLM generation failed", e)
             store.updateTurn(turnId) { it.copy(toolLabel = "llm error: ${e.message}", failed = true) }
             returnToRest(); return
         }
         llmMs = System.currentTimeMillis() - llmStart
         rawLength = raw.length
+        exitDiagnostics.markPhase("executing_tool")
         val calls = llm.parseToolCalls(raw)
         val selectedCall = ControlTools.selectSingleCall(calls)
         // Routing telemetry for analysis: input, what the model emitted, and
@@ -581,7 +622,11 @@ class ControlAgentActivity : ComponentActivity() {
             "raw='${raw.replace("\n", " ").take(160)}'")
         val outcome = selectedCall?.let { call ->
             try { ControlTools.execute(call, device) }
-            catch (e: Exception) { Log.e(TAG, "tool execution failed", e); null }
+            catch (e: Throwable) {
+                e.rethrowIfProcessFatal()
+                Log.e(TAG, "tool execution failed", e)
+                null
+            }
         } ?: run {
             val label = when {
                 calls.isEmpty() -> "no tool call"
@@ -600,6 +645,7 @@ class ControlAgentActivity : ComponentActivity() {
 
         store.setMic(MicState.SPEAKING)
         store.setStatus("speaking")
+        exitDiagnostics.markPhase("speaking")
         micPaused = true
         // Pocket is genuinely recurrent, so send it the whole response and
         // play its 80 ms callbacks through one continuous AudioTrack. Kokoro
@@ -710,7 +756,10 @@ class ControlAgentActivity : ComponentActivity() {
                     if (!playbackCompleted) stopPlayback()
                 }
             }
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            e.rethrowIfProcessFatal()
             Log.e(TAG, "TTS failed", e)
             store.addNote("tts error: ${e.message}")
             micPaused = false
@@ -737,11 +786,15 @@ class ControlAgentActivity : ComponentActivity() {
     /** Launch actions that intentionally leave this Activity only after TTS. */
     private suspend fun executeDeferredAction(outcome: ToolOutcome?, turnId: Long) {
         if (outcome?.deferredAction == null) return
+        exitDiagnostics.markPhase("deferred_action")
         try {
             withContext(Dispatchers.Main.immediate) {
                 ControlTools.executeDeferredAction(outcome, device)
             }
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            e.rethrowIfProcessFatal()
             Log.e(TAG, "deferred tool execution failed", e)
             store.updateTurn(turnId) { it.copy(failed = true) }
             store.addNote("action error: ${e.message}")
@@ -1179,6 +1232,7 @@ class ControlAgentActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        exitDiagnostics.markPhase("background")
         if (recording) {
             stopMicrophone()
             store.setMic(MicState.IDLE)
@@ -1189,6 +1243,7 @@ class ControlAgentActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        exitDiagnostics.markPhase("destroying")
         stopMicrophone()
         stopPlayback()
         device.stopMusic()
@@ -1197,5 +1252,10 @@ class ControlAgentActivity : ComponentActivity() {
         pipeline?.close()
         llmRuntime?.close()
         super.onDestroy()
+    }
+
+    /** Linkage/assertion errors are reportable; VM failures must retain normal fatal semantics. */
+    private fun Throwable.rethrowIfProcessFatal() {
+        if (this is VirtualMachineError || this is ThreadDeath) throw this
     }
 }

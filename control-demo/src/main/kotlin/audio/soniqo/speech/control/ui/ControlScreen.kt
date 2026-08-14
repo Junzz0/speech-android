@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
@@ -68,6 +69,7 @@ data class ControlActions(
     val onDismissType: () -> Unit,
     val onOpenInfo: () -> Unit,
     val onDismissInfo: () -> Unit,
+    val onShareDiagnostics: () -> Unit,
 )
 
 @Composable
@@ -102,7 +104,11 @@ fun ControlScreen(
         TypeCommandDialog(actions.onSubmitTyped, actions.onDismissType)
     }
     if (state.showInfoDialog) {
-        InfoDialog(actions.onDismissInfo)
+        InfoDialog(
+            diagnosticsReport = state.diagnosticsReport,
+            onShareDiagnostics = actions.onShareDiagnostics,
+            onDismiss = actions.onDismissInfo,
+        )
     }
 }
 
@@ -370,7 +376,11 @@ private fun OrbDock(state: ControlUiState, actions: ControlActions, reduceMotion
 }
 
 @Composable
-private fun InfoDialog(onDismiss: () -> Unit) {
+private fun InfoDialog(
+    diagnosticsReport: String?,
+    onShareDiagnostics: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Card,
@@ -398,10 +408,28 @@ private fun InfoDialog(onDismiss: () -> Unit) {
                 audio.soniqo.speech.control.ControlTools.declarations.forEach { tool ->
                     CapabilityRow(tool)
                 }
+
+                diagnosticsReport?.let { report ->
+                    Spacer(Modifier.height(10.dp))
+                    Text("Diagnostics", color = Foreground, fontFamily = Grotesk,
+                        fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Spacer(Modifier.height(6.dp))
+                    SelectionContainer {
+                        Text(report, color = FaintFg, fontFamily = Plex,
+                            fontSize = 10.5.sp, lineHeight = 15.sp)
+                    }
+                }
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) { Text("Close", color = Primary, fontFamily = Grotesk) }
+        },
+        dismissButton = {
+            if (diagnosticsReport != null) {
+                TextButton(onClick = onShareDiagnostics) {
+                    Text("Share diagnostics", color = MutedFg, fontFamily = Grotesk)
+                }
+            }
         },
     )
 }
