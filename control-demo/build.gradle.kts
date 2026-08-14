@@ -32,7 +32,10 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             if (System.getenv("SIGNING_KEYSTORE") != null) {
                 signingConfig = signingConfigs.getByName("release")
             }
@@ -50,6 +53,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -60,12 +64,16 @@ dependencies {
 
     // FunctionGemma runs in the app rather than the SDK, keeping LiteRT-LM
     // out of the published speech artifact.
-    implementation("com.google.ai.edge.litertlm:litertlm-android:0.14.0")
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.16.0")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.activity:activity-ktx:1.9.0")
     implementation("androidx.work:work-runtime-ktx:2.11.2")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // LiteRT-LM's Kotlin bindings are compiled against the interface-default
+    // layout introduced in coroutines 1.11.0. Its published POM still asks
+    // for 1.9.0, which can terminate the app with NoSuchMethodError when a
+    // binding callback completes (google-ai-edge/LiteRT-LM#2812).
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.9.3")

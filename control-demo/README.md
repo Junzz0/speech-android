@@ -43,6 +43,34 @@ The same data is available for device benchmarks with:
 adb logcat -s SpeechControl | grep 'TURN'
 ```
 
+## Crash diagnostics
+
+On Android 11 and newer, the demo records only its coarse execution phase
+(`loading_llm`, `thinking`, `speaking`, and so on) in Android's process-exit
+metadata. It never puts an utterance, contact, or media title there. After an
+unexpected Java/native crash, ANR, signal, or low-memory kill, the next launch
+shows the previous exit reason, phase, signal where available, and Android's
+last sampled PSS. Open **ⓘ → Share diagnostics** to copy the full device/app
+summary into a bug report.
+
+For the stack trace, reproduce once while collecting logcat:
+
+```bash
+adb logcat -c
+adb logcat -v threadtime > soniqo-control-crash.txt
+# Reproduce the crash, then stop logcat with Ctrl+C.
+```
+
+Immediately after a crash, Android's dedicated crash buffer is a shorter
+alternative:
+
+```bash
+adb logcat -b crash -d -v threadtime > soniqo-control-crash.txt
+```
+
+Review or redact logs before sharing them; system logs can contain unrelated
+device information.
+
 ## Validate
 
 ```bash

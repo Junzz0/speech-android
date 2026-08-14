@@ -36,6 +36,8 @@ data class ControlUiState(
     val memPeakMb: Int = 0,
     /** Latencies of the most recent completed turn, for the status line. */
     val lastMetrics: TurnMetrics? = null,
+    /** Device/app details plus the most recent unexpected process exit, for sharing. */
+    val diagnosticsReport: String? = null,
     val feed: List<FeedItem> = emptyList(),
     val showTypeDialog: Boolean = false,
     val showInfoDialog: Boolean = false,
@@ -71,6 +73,9 @@ class ControlStore {
 
     fun setLastMetrics(metrics: TurnMetrics) =
         _state.update { it.copy(lastMetrics = metrics) }
+
+    fun setDiagnosticsReport(report: String) =
+        _state.update { it.copy(diagnosticsReport = report) }
 
     fun setTypeDialog(visible: Boolean) = _state.update { it.copy(showTypeDialog = visible) }
 
