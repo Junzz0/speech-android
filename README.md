@@ -70,6 +70,12 @@ val config = SpeechConfig(
 non-autoregressive flow-matching graphs on-device at 44.1 kHz; the front-end is G2P-free (NFKD +
 Unicode index — no phonemizer), so all 31 languages go through one path.
 
+Both Kokoro and Supertonic take a per-call voice preset on direct synthesis —
+`pipeline.synthesize("Hello", "en", "M1")` (Supertonic `F1`…`F5` / `M1`…`M5`; Kokoro `af_heart`,
+`ff_siwis`, …) — and the same argument exists on `synthesizeStreaming` and `SpeechSynthesizer`.
+The preset applies to that call only; omit it (or pass `""`) to keep the engine default, and an
+unknown id throws.
+
 **FunctionGemma 270M** is a Gemma 3 derivative trained for structured tool
 calls. The Kotlin wrapper (`audio.soniqo.speech.llm.FunctionGemma`) is a
 runtime-agnostic shell: bring your own LiteRT-LM runtime adapter (see the

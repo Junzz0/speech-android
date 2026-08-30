@@ -62,6 +62,8 @@ val config = SpeechConfig(
 
 **Supertonic-3** はオプトインの高品質な多言語 TTS です — `SpeechConfig(ttsModel = TtsModel.SUPERTONIC)` で選択します(LiteRT バックエンドが必要)。ホストはその 4 つの非自己回帰 flow-matching グラフを 44.1 kHz でオンデバイス実行します。フロントエンドは G2P-free(NFKD + Unicode インデックス — phonemizer なし)なので、31 言語すべてが単一のパスを通ります。
 
+Kokoro と Supertonic はどちらも、直接合成の呼び出しごとに音声プリセットを指定できます — `pipeline.synthesize("Hello", "en", "M1")`(Supertonic は `F1`…`F5` / `M1`…`M5`、Kokoro は `af_heart`、`ff_siwis` など)。同じ引数は `synthesizeStreaming` と `SpeechSynthesizer` にもあります。プリセットはその呼び出しにのみ適用され、省略(または `""` を指定)するとエンジンのデフォルト音声のままになります。未知の id は例外を投げます。
+
 ## デモを試す
 
 [署名済み APK](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk) をダウンロードし、任意の arm64 Android デバイス(8 以降)にインストールします。既定の低メモリモデルバンドル(~500 MB)は初回起動時に自動ダウンロードされます。

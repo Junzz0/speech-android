@@ -40,11 +40,19 @@ internal object NativeBridge {
     // Direct synthesis with the pipeline's already-loaded TTS model — lets a
     // TRANSCRIBE_ONLY agent loop speak responses without a second TTS copy.
     external fun nativePipelineTtsSampleRate(handle: Long): Int
-    external fun nativePipelineSynthesize(handle: Long, text: String, language: String): ByteArray
+    // `voice` is a per-call preset ("" = engine default); the bridge restores
+    // the default after the call so it never leaks into later synthesis.
+    external fun nativePipelineSynthesize(
+        handle: Long,
+        text: String,
+        language: String,
+        voice: String,
+    ): ByteArray
     external fun nativePipelineSynthesizeStreaming(
         handle: Long,
         text: String,
         language: String,
+        voice: String,
         callback: SynthesisCallback,
     )
     external fun nativePipelineCancelSynthesis(handle: Long)
@@ -57,7 +65,12 @@ internal object NativeBridge {
     external fun nativeDestroySynthesizer(handle: Long)
     external fun nativeStopSynthesizer(handle: Long)
     external fun nativeSynthesizerSampleRate(handle: Long): Int
-    external fun nativeSynthesize(handle: Long, text: String, language: String): ByteArray
+    external fun nativeSynthesize(
+        handle: Long,
+        text: String,
+        language: String,
+        voice: String,
+    ): ByteArray
 
     /** Called from native code on the pipeline worker thread. */
     interface EventCallback {
