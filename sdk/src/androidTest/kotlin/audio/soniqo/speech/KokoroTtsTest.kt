@@ -132,6 +132,59 @@ class KokoroTtsTest {
         pipeline.close()
     }
 
+    /**
+     * Direct synthesis with a per-call voice preset: a different Kokoro voice
+     * changes the predicted duration, the preset does not leak into the next
+     * default call, and an unknown id fails loudly without breaking later
+     * synthesis. Durations are compared rather than samples because Kokoro
+     * draws random vocoder phases on every call.
+     */
+    @Test
+    fun directSynthesisAppliesVoicePresetPerCall() {
+        val config = SpeechConfig(
+            modelDir = modelDir,
+            useNnapi = false,
+            pipelineMode = PipelineMode.TRANSCRIBE_ONLY,
+        )
+        SpeechPipeline(config).use { pipeline ->
+            val text = "The quick brown fox jumps over the lazy dog."
+            // One Kokoro frame is 600 samples = 1200 PCM16 bytes.
+            val frameBytes = 1200
+
+            val default1 = pipeline.synthesize(text, "en").pcm16
+            val voiced = pipeline.synthesize(text, "en", "ff_siwis").pcm16
+            val default2 = pipeline.synthesize(text, "en").pcm16
+
+            assertTrue("default synthesis too short (${default1.size} bytes)", default1.size >= 4800)
+            assertTrue("voiced synthesis too short (${voiced.size} bytes)", voiced.size >= 4800)
+            assertTrue(
+                "A different voice preset should change the predicted duration " +
+                    "(default=${default1.size} voiced=${voiced.size} bytes)",
+                Math.abs(voiced.size - default1.size) > frameBytes,
+            )
+            assertTrue(
+                "The voice preset must not leak into the next default call " +
+                    "(${default1.size} vs ${default2.size} bytes)",
+                Math.abs(default1.size - default2.size) <= frameBytes,
+            )
+
+            val error = runCatching { pipeline.synthesize(text, "en", "no_such_voice") }.exceptionOrNull()
+            assertTrue("Unknown voice should throw, got $error", error is RuntimeException)
+            assertTrue(
+                "Unknown-voice error should name the voice: ${error?.message}",
+                error?.message?.contains("no_such_voice") == true,
+            )
+
+            // The failed call must leave the engine usable and on its default voice.
+            val afterError = pipeline.synthesize(text, "en").pcm16
+            assertTrue(
+                "Default voice should survive a failed voice call " +
+                    "(${default1.size} vs ${afterError.size} bytes)",
+                Math.abs(default1.size - afterError.size) <= frameBytes,
+            )
+        }
+    }
+
     @Test
     fun pipelineHandlesEmptyAudio() {
         val config = SpeechConfig(modelDir = modelDir, useNnapi = false)

@@ -82,6 +82,19 @@ interface SpeechPipeline : AutoCloseable {
         throw UnsupportedOperationException("This SpeechPipeline does not support direct synthesis")
 
     /**
+     * Like [synthesize], but renders this one call with the TTS voice preset
+     * [voice]: Supertonic `F1`…`F5` / `M1`…`M5`, Kokoro `af_heart`,
+     * `ff_siwis`, … The preset applies to this call only — later calls and
+     * the pipeline's own ECHO responses keep the engine default (for Kokoro
+     * that is the language-mapped voice). An empty [voice] behaves like
+     * [synthesize]; an unknown id throws [RuntimeException]; fixed-voice
+     * models (Pocket) ignore it. The default implementation ignores [voice]
+     * so custom pipelines keep compiling.
+     */
+    fun synthesize(text: String, language: String, voice: String): SpeechSynthesisResult =
+        synthesize(text, language)
+
+    /**
      * Synthesize [text] and deliver each safe native model chunk as soon as it
      * is available. The call is blocking; invoke it off the main thread. The
      * default preserves compatibility with custom pipelines by emitting one
@@ -93,6 +106,16 @@ interface SpeechPipeline : AutoCloseable {
         onChunk: (result: SpeechSynthesisResult, isFinal: Boolean) -> Unit,
     ) {
         onChunk(synthesize(text, language), true)
+    }
+
+    /** [synthesizeStreaming] with a per-call TTS voice preset; see [synthesize]. */
+    fun synthesizeStreaming(
+        text: String,
+        language: String,
+        voice: String,
+        onChunk: (result: SpeechSynthesisResult, isFinal: Boolean) -> Unit,
+    ) {
+        onChunk(synthesize(text, language, voice), true)
     }
 
     /** Cancel an in-progress [synthesize]. */
@@ -188,17 +211,27 @@ internal class SpeechPipelineImpl(config: SpeechConfig) : SpeechPipeline {
     override val ttsSampleRate: Int
         get() = NativeBridge.nativePipelineTtsSampleRate(handle)
 
-    override fun synthesize(text: String, language: String): SpeechSynthesisResult {
+    override fun synthesize(text: String, language: String): SpeechSynthesisResult =
+        synthesize(text, language, voice = "")
+
+    override fun synthesize(text: String, language: String, voice: String): SpeechSynthesisResult {
         check(handle != 0L) { "SpeechPipeline is closed" }
         return SpeechSynthesisResult(
             sampleRate = ttsSampleRate,
-            pcm16 = NativeBridge.nativePipelineSynthesize(handle, text, language),
+            pcm16 = NativeBridge.nativePipelineSynthesize(handle, text, language, voice),
         )
     }
 
     override fun synthesizeStreaming(
         text: String,
         language: String,
+        onChunk: (result: SpeechSynthesisResult, isFinal: Boolean) -> Unit,
+    ) = synthesizeStreaming(text, language, voice = "", onChunk = onChunk)
+
+    override fun synthesizeStreaming(
+        text: String,
+        language: String,
+        voice: String,
         onChunk: (result: SpeechSynthesisResult, isFinal: Boolean) -> Unit,
     ) {
         check(handle != 0L) { "SpeechPipeline is closed" }
@@ -207,6 +240,7 @@ internal class SpeechPipelineImpl(config: SpeechConfig) : SpeechPipeline {
             handle,
             text,
             language,
+            voice,
             NativeBridge.SynthesisCallback { audio, isFinal ->
                 onChunk(SpeechSynthesisResult(sampleRate, audio), isFinal)
             },

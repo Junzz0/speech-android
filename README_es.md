@@ -62,6 +62,8 @@ val config = SpeechConfig(
 
 **Supertonic-3** es un TTS multilingüe opcional de mayor calidad — selecciónalo con `SpeechConfig(ttsModel = TtsModel.SUPERTONIC)` (requiere el backend LiteRT). El host ejecuta sus cuatro grafos de flow-matching no autorregresivos en el dispositivo a 44.1 kHz; el front-end es G2P-free (NFKD + índice Unicode — sin fonemizador), por lo que los 31 idiomas pasan por una sola ruta.
 
+Tanto Kokoro como Supertonic aceptan un preset de voz por llamada en la síntesis directa — `pipeline.synthesize("Hello", "en", "M1")` (Supertonic `F1`…`F5` / `M1`…`M5`; Kokoro `af_heart`, `ff_siwis`, …) — y el mismo argumento existe en `synthesizeStreaming` y `SpeechSynthesizer`. El preset se aplica solo a esa llamada; omítelo (o pasa `""`) para mantener la voz por defecto del motor, y un id desconocido lanza una excepción.
+
 ## Prueba la demo
 
 Descarga el [APK firmado](https://github.com/soniqo/speech-android/releases/latest/download/app-release.apk) e instálalo en cualquier dispositivo Android arm64 (8+). El paquete de modelos de baja memoria por defecto (~500 MB) se descarga automáticamente en el primer inicio.

@@ -38,6 +38,17 @@ interface SpeechSynthesizer : AutoCloseable {
     /** Synthesize [text] as PCM16 mono audio. */
     fun synthesize(text: String, language: String = "en"): SpeechSynthesisResult
 
+    /**
+     * Like [synthesize], but renders this one call with the TTS voice preset
+     * [voice] (Supertonic `F1`…`F5` / `M1`…`M5`, Kokoro `af_heart`,
+     * `ff_siwis`, …). The preset applies to this call only; an empty [voice]
+     * keeps the engine default, an unknown id throws [RuntimeException], and
+     * fixed-voice models (Pocket) ignore it. The default implementation
+     * ignores [voice] so test doubles keep compiling.
+     */
+    fun synthesize(text: String, language: String, voice: String): SpeechSynthesisResult =
+        synthesize(text, language)
+
     /** Cancel any in-progress synthesis. */
     fun stop()
 
@@ -62,11 +73,14 @@ internal class SpeechSynthesizerImpl(config: SpeechSynthesizerConfig) : SpeechSy
     override val sampleRate: Int
         get() = NativeBridge.nativeSynthesizerSampleRate(handle)
 
-    override fun synthesize(text: String, language: String): SpeechSynthesisResult {
+    override fun synthesize(text: String, language: String): SpeechSynthesisResult =
+        synthesize(text, language, voice = "")
+
+    override fun synthesize(text: String, language: String, voice: String): SpeechSynthesisResult {
         check(handle != 0L) { "SpeechSynthesizer is closed" }
         return SpeechSynthesisResult(
             sampleRate = sampleRate,
-            pcm16 = NativeBridge.nativeSynthesize(handle, text, language),
+            pcm16 = NativeBridge.nativeSynthesize(handle, text, language, voice),
         )
     }
 

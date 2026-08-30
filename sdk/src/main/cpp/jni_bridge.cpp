@@ -546,17 +546,52 @@ Java_audio_soniqo_speech_NativeBridge_nativeSynthesizerSampleRate(
     return static_cast<jint>(h->tts->output_sample_rate());
 }
 
+// Applies a per-call voice preset for one synthesis and restores the engine
+// default afterwards — also when synthesis throws — so the preset never leaks
+// into later calls or into the pipeline's own ECHO responses. Construct only
+// while holding the TTS mutex; set_voice() is not synchronized on its own.
+// An unknown id throws std::invalid_argument from the constructor, before any
+// state changes.
+class ScopedVoice {
+public:
+    ScopedVoice(speech_core::TTSInterface& tts, const std::string& voice_id)
+        : tts_(tts), active_(!voice_id.empty())
+    {
+        if (active_) tts_.set_voice(voice_id);
+    }
+    ~ScopedVoice()
+    {
+        if (!active_) return;
+        try {
+            tts_.set_voice("");
+        } catch (const std::exception& e) {
+            LOGE("Failed to restore the default TTS voice: %s", e.what());
+        }
+    }
+    ScopedVoice(const ScopedVoice&) = delete;
+    ScopedVoice& operator=(const ScopedVoice&) = delete;
+
+private:
+    speech_core::TTSInterface& tts_;
+    bool active_;
+};
+
 // Synthesize with [tts] under [mutex], returning PCM16 mono little-endian
-// bytes. Throws a Java RuntimeException and returns nullptr on failure.
+// bytes. [voice] selects a preset for this call only ("" or null keeps the
+// engine default). Throws a Java RuntimeException and returns nullptr on
+// failure.
 static jbyteArray synthesize_pcm16(JNIEnv* env, speech_core::TTSInterface& tts,
-                                   std::mutex& mutex, jstring text, jstring language)
+                                   std::mutex& mutex, jstring text, jstring language,
+                                   jstring voice)
 {
     std::string input = jstring_to_string(env, text);
     std::string lang = jstring_to_string(env, language);
+    std::string voice_id = jstring_to_string(env, voice);
     std::vector<int16_t> pcm;
 
     try {
         std::lock_guard<std::mutex> lock(mutex);
+        ScopedVoice scoped_voice(tts, voice_id);
         tts.synthesize(input, lang, [&pcm](const float* samples, size_t length, bool /*is_final*/) {
             pcm.reserve(pcm.size() + length);
             for (size_t i = 0; i < length; ++i) {
@@ -589,7 +624,7 @@ static jbyteArray synthesize_pcm16(JNIEnv* env, speech_core::TTSInterface& tts,
 // callers can begin playback while the following inference is still running.
 static void synthesize_streaming_pcm16(
     JNIEnv* env, speech_core::TTSInterface& tts, std::mutex& mutex,
-    jstring text, jstring language, jobject callback)
+    jstring text, jstring language, jstring voice, jobject callback)
 {
     if (!callback) {
         jclass ex_cls = env->FindClass("java/lang/IllegalArgumentException");
@@ -607,9 +642,11 @@ static void synthesize_streaming_pcm16(
 
     std::string input = jstring_to_string(env, text);
     std::string lang = jstring_to_string(env, language);
+    std::string voice_id = jstring_to_string(env, voice);
     bool callback_failed = false;
     try {
         std::lock_guard<std::mutex> lock(mutex);
+        ScopedVoice scoped_voice(tts, voice_id);
         tts.synthesize(
             input, lang,
             [&](const float* samples, size_t length, bool is_final) {
@@ -663,7 +700,8 @@ static void synthesize_streaming_pcm16(
 
 JNIEXPORT jbyteArray JNICALL
 Java_audio_soniqo_speech_NativeBridge_nativeSynthesize(
-    JNIEnv* env, jobject /*thiz*/, jlong handle, jstring text, jstring language)
+    JNIEnv* env, jobject /*thiz*/, jlong handle, jstring text, jstring language,
+    jstring voice)
 {
     auto* h = reinterpret_cast<SynthesizerHandle*>(handle);
     if (!h || !h->tts) {
@@ -671,7 +709,7 @@ Java_audio_soniqo_speech_NativeBridge_nativeSynthesize(
         if (ex_cls) env->ThrowNew(ex_cls, "Native synthesizer is closed");
         return nullptr;
     }
-    return synthesize_pcm16(env, *h->tts, h->mutex, text, language);
+    return synthesize_pcm16(env, *h->tts, h->mutex, text, language, voice);
 }
 
 JNIEXPORT jint JNICALL
@@ -685,7 +723,8 @@ Java_audio_soniqo_speech_NativeBridge_nativePipelineTtsSampleRate(
 
 JNIEXPORT jbyteArray JNICALL
 Java_audio_soniqo_speech_NativeBridge_nativePipelineSynthesize(
-    JNIEnv* env, jobject /*thiz*/, jlong handle, jstring text, jstring language)
+    JNIEnv* env, jobject /*thiz*/, jlong handle, jstring text, jstring language,
+    jstring voice)
 {
     auto* h = reinterpret_cast<PipelineHandle*>(handle);
     if (!h || !h->tts) {
@@ -693,13 +732,13 @@ Java_audio_soniqo_speech_NativeBridge_nativePipelineSynthesize(
         if (ex_cls) env->ThrowNew(ex_cls, "Native pipeline is closed");
         return nullptr;
     }
-    return synthesize_pcm16(env, *h->tts, h->tts_mutex, text, language);
+    return synthesize_pcm16(env, *h->tts, h->tts_mutex, text, language, voice);
 }
 
 JNIEXPORT void JNICALL
 Java_audio_soniqo_speech_NativeBridge_nativePipelineSynthesizeStreaming(
     JNIEnv* env, jobject /*thiz*/, jlong handle, jstring text, jstring language,
-    jobject callback)
+    jstring voice, jobject callback)
 {
     auto* h = reinterpret_cast<PipelineHandle*>(handle);
     if (!h || !h->tts) {
@@ -708,7 +747,7 @@ Java_audio_soniqo_speech_NativeBridge_nativePipelineSynthesizeStreaming(
         return;
     }
     synthesize_streaming_pcm16(
-        env, *h->tts, h->tts_mutex, text, language, callback);
+        env, *h->tts, h->tts_mutex, text, language, voice, callback);
 }
 
 JNIEXPORT void JNICALL
