@@ -74,7 +74,7 @@ Kokoro と Supertonic はどちらも、直接合成の呼び出しごとに音�
 
 ```kotlin
 dependencies {
-    implementation("audio.soniqo:speech:0.0.18")
+    implementation("audio.soniqo:speech:0.0.19")
 }
 ```
 

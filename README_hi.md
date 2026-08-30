@@ -74,7 +74,7 @@ Kokoro और Supertonic दोनों डायरेक्ट सिंथ�
 
 ```kotlin
 dependencies {
-    implementation("audio.soniqo:speech:0.0.18")
+    implementation("audio.soniqo:speech:0.0.19")
 }
 ```
 
