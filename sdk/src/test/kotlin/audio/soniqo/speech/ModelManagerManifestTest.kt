@@ -229,6 +229,45 @@ class ModelManagerManifestTest {
     }
 
     @Test
+    fun `supertonic manifest leaves the latent bucket out by default`() {
+        val files = ModelManager.ttsModels(TtsModel.SUPERTONIC)
+        assertTrue(files.none { it.filename.endsWith("_L128.tflite") })
+        assertEquals(files, ModelManager.ttsModels(TtsModel.SUPERTONIC, supertonicLatentBuckets = false))
+        assertTrue(
+            modelFiles(ttsModel = TtsModel.SUPERTONIC).none { it.filename.endsWith("_L128.tflite") },
+        )
+    }
+
+    @Test
+    fun `supertonic latent bucket option appends the L128 pair`() {
+        val base = ModelManager.ttsModels(TtsModel.SUPERTONIC)
+        val withBuckets = ModelManager.ttsModels(TtsModel.SUPERTONIC, supertonicLatentBuckets = true)
+        assertEquals(
+            base + listOf(
+                ModelManager.ModelFile("Supertonic-3-LiteRT", "vector_estimator_L128.tflite"),
+                ModelManager.ModelFile("Supertonic-3-LiteRT", "vocoder_L128.tflite"),
+            ),
+            withBuckets,
+        )
+        // Same cache set as the base bundle: enabling the option later only adds the two files.
+        assertEquals(
+            base.map { it.localFilename.substringBeforeLast('/', "") }.toSet(),
+            withBuckets.map { it.localFilename.substringBeforeLast('/', "") }.toSet(),
+        )
+        // Only Supertonic has a bucket; other TTS models ignore the flag.
+        assertEquals(
+            ModelManager.ttsModels(TtsModel.KOKORO),
+            ModelManager.ttsModels(TtsModel.KOKORO, supertonicLatentBuckets = true),
+        )
+        assertEquals(
+            2,
+            ModelManager.models(
+                ModelPrecision.INT8, ttsModel = TtsModel.SUPERTONIC, supertonicLatentBuckets = true,
+            ).count { it.filename.endsWith("_L128.tflite") },
+        )
+    }
+
+    @Test
     fun `pocket manifest is pinned and namespaced away from stt assets`() {
         val files = ModelManager.ttsModels(TtsModel.POCKET)
 

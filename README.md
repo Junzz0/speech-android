@@ -69,6 +69,12 @@ val config = SpeechConfig(
 `SpeechConfig(ttsModel = TtsModel.SUPERTONIC)` (requires the LiteRT backend). The host runs its four
 non-autoregressive flow-matching graphs on-device at 44.1 kHz; the front-end is G2P-free (NFKD +
 Unicode index — no phonemizer), so all 31 languages go through one path.
+Long sentences: the bundle also ships an optional L=128 latent-window graph pair
+(`vector_estimator_L128.tflite` + `vocoder_L128.tflite`, +341 MB). Download it with
+`ModelDownloadWorker.enqueue(context, ttsModel = TtsModel.SUPERTONIC, supertonicLatentBuckets = true)`
+(or the same flag on `ModelManager.ensureTtsModels`) and speech-core synthesizes a sentence longer
+than the 4.5 s base window in one pass instead of splitting it; the pair is loaded on first use
+(+~360 MB RSS). Off by default.
 
 Both Kokoro and Supertonic take a per-call voice preset on direct synthesis —
 `pipeline.synthesize("Hello", "en", "M1")` (Supertonic `F1`…`F5` / `M1`…`M5`; Kokoro `af_heart`,

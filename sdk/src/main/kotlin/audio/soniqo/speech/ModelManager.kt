@@ -52,11 +52,16 @@ object ModelManager {
         .build()
 
     @VisibleForTesting
+    /** L=128 latent-window graph pair shipped next to the Supertonic base graphs. */
+    internal val SUPERTONIC_LATENT_BUCKET_FILES =
+        listOf("vector_estimator_L128.tflite", "vocoder_L128.tflite")
+
     internal fun models(
         precision: ModelPrecision,
         sttModel: SttModel = SttModel.PARAKEET_EOU,
         sttBackend: SttBackend = SttBackend.ONNX,
         ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
+        supertonicLatentBuckets: Boolean = false,
     ): List<ModelFile> {
         val suffix = if (precision == ModelPrecision.INT8) "-int8" else ""
         val files = mutableListOf(
@@ -138,7 +143,7 @@ object ModelManager {
             }
         }
 
-        files += ttsModels(ttsModel)
+        files += ttsModels(ttsModel, supertonicLatentBuckets)
 
         // Noise cancellation
         files += ModelFile("DeepFilterNet3-ONNX", "deepfilter-auxiliary.bin")
@@ -147,7 +152,20 @@ object ModelManager {
     }
 
     @VisibleForTesting
-    internal fun ttsModels(ttsModel: TtsModel): List<ModelFile> = when (ttsModel) {
+    /**
+     * @param supertonicLatentBuckets Supertonic only: also list the L=128
+     *   latent-window graph pair (`vector_estimator_L128.tflite` +
+     *   `vocoder_L128.tflite`, +341 MB), which lets a sentence longer than the
+     *   4.5 s base window be synthesized in one pass instead of split.
+     *   speech-core discovers the pair next to the base graphs and loads it on
+     *   first use (+~360 MB RSS). Off by default; ignored by other TTS models.
+     *   The pair shares the Supertonic cache set, so enabling it later
+     *   downloads only the two extra files.
+     */
+    internal fun ttsModels(
+        ttsModel: TtsModel,
+        supertonicLatentBuckets: Boolean = false,
+    ): List<ModelFile> = when (ttsModel) {
         TtsModel.KOKORO, TtsModel.KOKORO_SHORT_TURN -> listOf(
             // Both graph profiles share one external weight blob. Keeping both
             // protos in the same cache makes profile switches a ~2.6 MB fetch,
@@ -172,8 +190,9 @@ object ModelManager {
             ModelFile("Kokoro-82M-ONNX", "voices/jf_alpha.bin"),
             ModelFile("Kokoro-82M-ONNX", "voices/zf_xiaobei.bin"),
         )
-        // Four LiteRT graphs + the G2P-free tokenizer assets + the 10-voice catalog.
-        TtsModel.SUPERTONIC -> listOf(
+        // Four LiteRT graphs + the G2P-free tokenizer assets + the 10-voice catalog,
+        // plus the optional L=128 latent bucket (see [supertonicLatentBuckets]).
+        TtsModel.SUPERTONIC -> (listOf(
             "duration_predictor.tflite", "text_encoder.tflite",
             "vector_estimator.tflite", "vocoder.tflite",
             "tts.json", "unicode_indexer.json",
@@ -181,7 +200,8 @@ object ModelManager {
             "voice_styles/F4.json", "voice_styles/F5.json",
             "voice_styles/M1.json", "voice_styles/M2.json", "voice_styles/M3.json",
             "voice_styles/M4.json", "voice_styles/M5.json",
-        ).map { ModelFile("Supertonic-3-LiteRT", it) }
+        ) + if (supertonicLatentBuckets) SUPERTONIC_LATENT_BUCKET_FILES else emptyList())
+            .map { ModelFile("Supertonic-3-LiteRT", it) }
         TtsModel.POCKET -> listOf(
             // Runtime files from the immutable public fixed-Alba bundle. Keep
             // them below pocket_tts/: Parakeet and Pocket both ship vocab.json.
@@ -272,6 +292,7 @@ object ModelManager {
         sttModel: SttModel = SttModel.PARAKEET_EOU,
         sttBackend: SttBackend = SttBackend.ONNX,
         ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
+        supertonicLatentBuckets: Boolean = false,
     ): Boolean {
         val dir = modelDirFile(context, precision, sttModel, sttBackend, ttsModel)
         if (!dir.exists()) return false
@@ -281,7 +302,7 @@ object ModelManager {
         if (cached < MODEL_VERSION) return false
         if (cachedModelSet(dir) != modelSetKey(precision, sttModel, sttBackend, ttsModel)) return false
 
-        val fileList = models(precision, sttModel, sttBackend, ttsModel)
+        val fileList = models(precision, sttModel, sttBackend, ttsModel, supertonicLatentBuckets)
         val allFiles = if (precision == ModelPrecision.FP32 && sttModel == SttModel.PARAKEET) {
             fileList + ModelFile("Parakeet-TDT-0.6B-ONNX", "parakeet-encoder.onnx.data")
         } else {
@@ -301,6 +322,7 @@ object ModelManager {
     fun areTtsModelsReady(
         context: Context,
         ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
+        supertonicLatentBuckets: Boolean = false,
     ): Boolean {
         val dir = File(context.filesDir, "models_tts")
         if (!dir.exists()) return false
@@ -310,7 +332,7 @@ object ModelManager {
         if (cached < MODEL_VERSION) return false
         if (cachedModelSet(dir) != ttsModelSetKey(ttsModel)) return false
 
-        return ttsModels(ttsModel).all { model ->
+        return ttsModels(ttsModel, supertonicLatentBuckets).all { model ->
             val dest = File(dir, model.localFilename)
             dest.exists() && isValidModel(dest, model.filename)
         }
@@ -385,6 +407,7 @@ object ModelManager {
         sttBackend: SttBackend = SttBackend.ONNX,
         ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
         onProgress: ((Progress) -> Unit)? = null,
+        supertonicLatentBuckets: Boolean = false,
     ): String = withContext(Dispatchers.IO) {
         val dir = modelDirFile(context, precision, sttModel, sttBackend, ttsModel)
         dir.mkdirs()
@@ -403,7 +426,7 @@ object ModelManager {
         // bytes=N- on the next attempt. Stale .tmp from an old MODEL_VERSION
         // or from a different model set are already wiped above.
 
-        val fileList = models(precision, sttModel, sttBackend, ttsModel)
+        val fileList = models(precision, sttModel, sttBackend, ttsModel, supertonicLatentBuckets)
         // FP32 Parakeet encoder needs the external data file.
         val allFiles = if (precision == ModelPrecision.FP32 && sttModel == SttModel.PARAKEET) {
             fileList + ModelFile("Parakeet-TDT-0.6B-ONNX", "parakeet-encoder.onnx.data")
@@ -426,6 +449,7 @@ object ModelManager {
         context: Context,
         ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
         onProgress: ((Progress) -> Unit)? = null,
+        supertonicLatentBuckets: Boolean = false,
     ): String = withContext(Dispatchers.IO) {
         val dir = File(context.filesDir, "models_tts")
         dir.mkdirs()
@@ -441,7 +465,7 @@ object ModelManager {
             File(dir, "voice_styles").mkdirs()
         }
 
-        downloadMissingModels(dir, ttsModels(ttsModel), onProgress)
+        downloadMissingModels(dir, ttsModels(ttsModel, supertonicLatentBuckets), onProgress)
 
         File(dir, "precision.txt").writeText("TTS")
         versionFile.writeText(MODEL_VERSION.toString())
