@@ -76,6 +76,7 @@ class ModelDownloadWorker(
         // whole ~800 MB setup runs in this foreground worker — surviving doze
         // and Wi-Fi power-save that would kill an in-app download.
         val includeLlm = inputData.getBoolean(KEY_INCLUDE_LLM, false)
+        val supertonicLatentBuckets = inputData.getBoolean(KEY_SUPERTONIC_LATENT_BUCKETS, false)
 
         runCatching { setForeground(buildForegroundInfo(0, "Preparing speech models…")) }
 
@@ -169,6 +170,7 @@ class ModelDownloadWorker(
                 sttBackend = sttBackend,
                 ttsModel = ttsModel,
                 onProgress = report,
+                supertonicLatentBuckets = supertonicLatentBuckets,
             )
             if (includeLlm) {
                 // Hand the bar over to the LLM phase: what the pipeline phase
@@ -311,6 +313,7 @@ class ModelDownloadWorker(
         const val KEY_STT_BACKEND = "sttBackend"
         const val KEY_TTS_MODEL = "ttsModel"
         const val KEY_INCLUDE_LLM = "includeLlm"
+        const val KEY_SUPERTONIC_LATENT_BUCKETS = "supertonicLatentBuckets"
         const val KEY_LLM_MODEL = "llmModel"
 
         // Output keys
@@ -354,6 +357,7 @@ class ModelDownloadWorker(
             ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
             includeLlm: Boolean = false,
             llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
+            supertonicLatentBuckets: Boolean = false,
         ): String {
             if (
                 precision == ModelPrecision.INT8 &&
@@ -364,13 +368,14 @@ class ModelDownloadWorker(
             ) {
                 return UNIQUE_NAME
             }
+            val buckets = if (supertonicLatentBuckets && ttsModel == TtsModel.SUPERTONIC) ".buckets" else ""
             val llm = when {
                 !includeLlm -> ""
                 llmModel == LlmModel.FUNCTIONGEMMA -> ".llm"
                 else -> ".llm.${llmModel.name}"
             }
             val ttsName = if (ttsModel.isKokoro) TtsModel.KOKORO.name else ttsModel.name
-            return "$UNIQUE_NAME.${precision.name}.${sttModel.name}.${sttBackend.name}.$ttsName$llm"
+            return "$UNIQUE_NAME.${precision.name}.${sttModel.name}.${sttBackend.name}.$ttsName$buckets$llm"
         }
 
         fun request(
@@ -380,6 +385,7 @@ class ModelDownloadWorker(
             ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
             includeLlm: Boolean = false,
             llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
+            supertonicLatentBuckets: Boolean = false,
         ) =
             OneTimeWorkRequestBuilder<ModelDownloadWorker>()
                 .setInputData(workDataOf(
@@ -389,6 +395,7 @@ class ModelDownloadWorker(
                     KEY_TTS_MODEL to ttsModel.name,
                     KEY_INCLUDE_LLM to includeLlm,
                     KEY_LLM_MODEL to llmModel.name,
+                    KEY_SUPERTONIC_LATENT_BUCKETS to supertonicLatentBuckets,
                 ))
                 .build()
 
@@ -405,6 +412,7 @@ class ModelDownloadWorker(
             ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
             includeLlm: Boolean = false,
             llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
+            supertonicLatentBuckets: Boolean = false,
         ): java.util.UUID {
             val req = request(
                 precision = precision,
@@ -413,6 +421,7 @@ class ModelDownloadWorker(
                 ttsModel = ttsModel,
                 includeLlm = includeLlm,
                 llmModel = llmModel,
+                supertonicLatentBuckets = supertonicLatentBuckets,
             )
             WorkManager.getInstance(context).enqueueUniqueWork(
                 uniqueName(
@@ -422,6 +431,7 @@ class ModelDownloadWorker(
                     ttsModel = ttsModel,
                     includeLlm = includeLlm,
                     llmModel = llmModel,
+                    supertonicLatentBuckets = supertonicLatentBuckets,
                 ),
                 ExistingWorkPolicy.KEEP, req,
             )
