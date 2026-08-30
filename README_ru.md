@@ -62,6 +62,8 @@ val config = SpeechConfig(
 
 **Supertonic-3** — это опциональный многоязычный TTS повышенного качества: выберите его через `SpeechConfig(ttsModel = TtsModel.SUPERTONIC)` (требуется бэкенд LiteRT). Хост выполняет его четыре неавторегрессионных flow-matching-графа на устройстве на частоте 44,1 кГц; фронтенд работает G2P-free (NFKD + индекс Unicode — без фонемизатора), поэтому все 31 язык проходят через один путь.
 
+Длинные предложения: в бандл также входит опциональная пара графов с латентным окном L=128 (`vector_estimator_L128.tflite` + `vocoder_L128.tflite`, +341 МБ). Скачайте её через `ModelDownloadWorker.enqueue(context, ttsModel = TtsModel.SUPERTONIC, supertonicLatentBuckets = true)` (или тот же флаг у `ModelManager.ensureTtsModels`), и speech-core синтезирует предложение длиннее базового окна в 4,5 с за один проход, не разбивая его; пара загружается при первом использовании (+~360 МБ RSS). По умолчанию выключено.
+
 Kokoro и Supertonic принимают пресет голоса на каждый вызов прямого синтеза — `pipeline.synthesize("Hello", "en", "M1")` (Supertonic `F1`…`F5` / `M1`…`M5`; Kokoro `af_heart`, `ff_siwis`, …) — тот же аргумент есть у `synthesizeStreaming` и `SpeechSynthesizer`. Пресет действует только для этого вызова; опустите его (или передайте `""`), чтобы сохранить голос движка по умолчанию, а неизвестный id вызывает исключение.
 
 ## Попробовать демо

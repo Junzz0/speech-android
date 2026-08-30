@@ -62,6 +62,8 @@ val config = SpeechConfig(
 
 **Supertonic-3** 是可选启用的更高质量多语言 TTS — 通过 `SpeechConfig(ttsModel = TtsModel.SUPERTONIC)` 选用(需要 LiteRT 后端)。宿主在设备端以 44.1 kHz 运行其四个非自回归流匹配图;前端免 G2P(NFKD + Unicode 索引 — 无音素转换器),因此全部 31 种语言走同一条路径。
 
+长句:模型包还附带一对可选的 L=128 潜在窗口图(`vector_estimator_L128.tflite` + `vocoder_L128.tflite`,+341 MB)。通过 `ModelDownloadWorker.enqueue(context, ttsModel = TtsModel.SUPERTONIC, supertonicLatentBuckets = true)`(或 `ModelManager.ensureTtsModels` 上的同名标志)下载后,speech-core 会把超过 4.5 s 基础窗口的句子一次合成,而不是拆开;这对图在首次使用时加载(+~360 MB RSS)。默认关闭。
+
 Kokoro 与 Supertonic 都支持在直接合成时按调用指定音色预设 — `pipeline.synthesize("Hello", "en", "M1")`(Supertonic:`F1`…`F5` / `M1`…`M5`;Kokoro:`af_heart`、`ff_siwis` 等)— `synthesizeStreaming` 和 `SpeechSynthesizer` 也有同样的参数。该预设仅对本次调用生效;省略它(或传 `""`)则沿用引擎默认音色,未知 id 会抛出异常。
 
 ## 试用演示

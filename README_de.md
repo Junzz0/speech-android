@@ -62,6 +62,8 @@ val config = SpeechConfig(
 
 **Supertonic-3** ist ein optionales, höherwertiges mehrsprachiges TTS — wähle es mit `SpeechConfig(ttsModel = TtsModel.SUPERTONIC)` aus (erfordert das LiteRT-Backend). Der Host führt seine vier nicht-autoregressiven Flow-Matching-Graphen mit 44,1 kHz auf dem Gerät aus; das Front-End ist G2P-frei (NFKD + Unicode-Index — kein Phonemizer), sodass alle 31 Sprachen über einen einzigen Pfad laufen.
 
+Lange Sätze: Das Bundle enthält zusätzlich ein optionales Graphenpaar mit L=128-Latenzfenster (`vector_estimator_L128.tflite` + `vocoder_L128.tflite`, +341 MB). Lade es mit `ModelDownloadWorker.enqueue(context, ttsModel = TtsModel.SUPERTONIC, supertonicLatentBuckets = true)` (oder demselben Flag bei `ModelManager.ensureTtsModels`) herunter, dann synthetisiert speech-core einen Satz, der länger als das 4,5-s-Basisfenster ist, in einem Durchgang, statt ihn aufzuteilen; das Paar wird bei der ersten Verwendung geladen (+~360 MB RSS). Standardmäßig deaktiviert.
+
 Kokoro und Supertonic nehmen bei der direkten Synthese pro Aufruf ein Stimm-Preset entgegen — `pipeline.synthesize("Hello", "en", "M1")` (Supertonic `F1`…`F5` / `M1`…`M5`; Kokoro `af_heart`, `ff_siwis`, …) — dasselbe Argument gibt es auch bei `synthesizeStreaming` und `SpeechSynthesizer`. Das Preset gilt nur für diesen Aufruf; lässt man es weg (oder übergibt `""`), bleibt die Standardstimme der Engine erhalten, und eine unbekannte id wirft eine Exception.
 
 ## Demo ausprobieren

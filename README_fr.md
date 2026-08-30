@@ -62,6 +62,8 @@ val config = SpeechConfig(
 
 **Supertonic-3** est une synthèse vocale multilingue de meilleure qualité, activable en option — sélectionnez-la avec `SpeechConfig(ttsModel = TtsModel.SUPERTONIC)` (nécessite le backend LiteRT). L'hôte exécute ses quatre graphes de flow-matching non autorégressifs en local à 44,1 kHz ; le front-end est G2P-free (NFKD + index Unicode — aucun phonémiseur), de sorte que les 31 langues passent par un seul chemin.
 
+Phrases longues : le bundle inclut aussi une paire optionnelle de graphes à fenêtre latente L=128 (`vector_estimator_L128.tflite` + `vocoder_L128.tflite`, +341 Mo). Téléchargez-la avec `ModelDownloadWorker.enqueue(context, ttsModel = TtsModel.SUPERTONIC, supertonicLatentBuckets = true)` (ou le même flag sur `ModelManager.ensureTtsModels`) et speech-core synthétise une phrase plus longue que la fenêtre de base de 4,5 s en une seule passe au lieu de la découper ; la paire est chargée à la première utilisation (+~360 Mo de RSS). Désactivé par défaut.
+
 Kokoro et Supertonic acceptent un préréglage de voix par appel lors de la synthèse directe — `pipeline.synthesize("Hello", "en", "M1")` (Supertonic `F1`…`F5` / `M1`…`M5` ; Kokoro `af_heart`, `ff_siwis`, …) — et le même argument existe sur `synthesizeStreaming` et `SpeechSynthesizer`. Le préréglage ne s'applique qu'à cet appel ; omettez-le (ou passez `""`) pour conserver la voix par défaut du moteur, et un id inconnu lève une exception.
 
 ## Essayer la démo
