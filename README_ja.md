@@ -62,6 +62,8 @@ val config = SpeechConfig(
 
 **Supertonic-3** はオプトインの高品質な多言語 TTS です — `SpeechConfig(ttsModel = TtsModel.SUPERTONIC)` で選択します(LiteRT バックエンドが必要)。ホストはその 4 つの非自己回帰 flow-matching グラフを 44.1 kHz でオンデバイス実行します。フロントエンドは G2P-free(NFKD + Unicode インデックス — phonemizer なし)なので、31 言語すべてが単一のパスを通ります。
 
+長い文: バンドルには、L=128 の潜在ウィンドウを持つオプションのグラフペア(`vector_estimator_L128.tflite` + `vocoder_L128.tflite`、+341 MB)も含まれています。`ModelDownloadWorker.enqueue(context, ttsModel = TtsModel.SUPERTONIC, supertonicLatentBuckets = true)`(または `ModelManager.ensureTtsModels` の同じフラグ)でダウンロードすると、speech-core は 4.5 秒の基本ウィンドウより長い文を分割せずに一度で合成します。このペアは初回使用時に読み込まれます(+~360 MB RSS)。デフォルトではオフです。
+
 Kokoro と Supertonic はどちらも、直接合成の呼び出しごとに音声プリセットを指定できます — `pipeline.synthesize("Hello", "en", "M1")`(Supertonic は `F1`…`F5` / `M1`…`M5`、Kokoro は `af_heart`、`ff_siwis` など)。同じ引数は `synthesizeStreaming` と `SpeechSynthesizer` にもあります。プリセットはその呼び出しにのみ適用され、省略(または `""` を指定)するとエンジンのデフォルト音声のままになります。未知の id は例外を投げます。
 
 ## デモを試す
@@ -72,7 +74,7 @@ Kokoro と Supertonic はどちらも、直接合成の呼び出しごとに音�
 
 ```kotlin
 dependencies {
-    implementation("audio.soniqo:speech:0.0.18")
+    implementation("audio.soniqo:speech:0.0.19")
 }
 ```
 
