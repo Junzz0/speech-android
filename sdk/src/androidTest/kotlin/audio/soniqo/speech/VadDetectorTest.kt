@@ -26,15 +26,17 @@ import java.nio.ByteOrder
 class VadDetectorTest {
 
     private lateinit var vadModelDir: String
-    private lateinit var ttsModelDir: String
+    private lateinit var fixtureModelDir: String
 
     @Before
     fun setup() = runBlocking {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        // The detector under test loads from the VAD-only cache — 2 MB, its own
+        // directory, no STT/TTS files. Fixture speech comes from the shared
+        // pipeline cache the rest of the suite already downloads; asking for a
+        // TTS-only copy here would duplicate ~330 MB of Kokoro on every device.
         vadModelDir = ModelManager.ensureVadModels(ctx)
-        // Fixture speech comes from the TTS-only profile and its own cache, so
-        // this suite never touches the ~1.2 GB pipeline model set.
-        ttsModelDir = ModelManager.ensureTtsModels(ctx)
+        fixtureModelDir = ModelManager.ensureModels(ctx)
     }
 
     @Test
@@ -163,7 +165,7 @@ class VadDetectorTest {
     }
 
     private fun synthesize(text: String): FloatArray =
-        SpeechSynthesizer(SpeechSynthesizerConfig(modelDir = ttsModelDir, useNnapi = false)).use {
+        SpeechSynthesizer(SpeechSynthesizerConfig(modelDir = fixtureModelDir, useNnapi = false)).use {
             val spoken = it.synthesize(text, "en")
             assertTrue("synthesized fixture should not be empty", spoken.pcm16.isNotEmpty())
             pcm16ToFloat16k(spoken.pcm16, spoken.sampleRate)
