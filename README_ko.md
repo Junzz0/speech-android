@@ -99,6 +99,38 @@ pipeline.start()
 pipeline.pushAudio(samples)
 ```
 
+### 음성 활동 감지 전용
+
+누군가 말하고 있는 *시점*만 알면 되는 앱 — 푸시투토크 게이팅, 녹음 분할, 음성
+웨이크업 — 은 Silero만 로드할 수 있습니다. 기본 모델 세트 약 500 MB 대신 다운로드
+2 MB, 메모리 10 MB 미만입니다. STT도 TTS도 파이프라인도 없습니다.
+
+```kotlin
+val detector = VadDetector(
+    VadConfig(
+        modelDir = ModelManager.ensureVadModels(context),
+        emitUtteranceAudio = true, // 캡처한 구간을 받으려면 켠다
+    )
+)
+
+detector.events.collect { event ->
+    when (event) {
+        is VadEvent.SpeechStarted -> startRecordingUi()
+        is VadEvent.SpeechEnded -> saveSegment(event.audio) // 16 kHz float32
+    }
+}
+
+// 16 kHz 모노 float32, 512 샘플 프레임
+detector.pushAudio(samples)
+// 스트림이 끝날 때 열린 구간을 닫는다
+detector.flush()
+```
+
+`VadConfig`는 파이프라인이 내부에서 쓰는 턴 감지를 그대로 노출합니다. 시작/종료
+임계값, 최소 발화 길이, 발화 종료 무음 길이, 그리고 첫 음절을 지켜 주는 프리스피치
+버퍼입니다. 이 경로는 `ModelManager.ensureVadModels()`와 별도의 `models_vad/`
+캐시를 사용하므로 STT/TTS 번들을 내려받지 않습니다.
+
 ## 소스에서 빌드
 
 ```bash

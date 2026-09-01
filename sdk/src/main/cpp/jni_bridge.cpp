@@ -16,6 +16,7 @@
 #endif
 #include <speech_core/interfaces.h>
 #include <speech_core/pipeline/agent_config.h>
+#include <speech_core/pipeline/turn_detector.h>
 #include <speech_core/pipeline/voice_pipeline.h>
 
 #include <algorithm>
@@ -67,6 +68,29 @@ struct PipelineHandle {
 struct SynthesizerHandle {
     std::unique_ptr<speech_core::TTSInterface> tts;
     std::mutex mutex;
+};
+
+// VAD-only handle: Silero + speech_core::TurnDetector, no VoicePipeline and
+// therefore no STT/TTS model. The counterpart of SynthesizerHandle at the
+// other end of the pipeline — an app that only needs to know when someone is
+// talking loads 2 MB instead of the ~500 MB model set.
+struct VadHandle {
+    std::unique_ptr<speech_core::SileroVad> vad;
+    std::unique_ptr<speech_core::TurnDetector> detector;
+
+    // TurnDetector mutates VAD, hysteresis and utterance state on every push
+    // and is not thread-safe; VoicePipeline guards its own instance the same
+    // way. Turn callbacks run inside push_audio with this held, so the Kotlin
+    // callback must not re-enter the detector.
+    std::mutex mutex;
+
+    // Copying the utterance out costs a JNI array per turn, so callers that
+    // only want the speech boundaries opt out.
+    bool emit_audio = false;
+
+    JavaVM* jvm = nullptr;
+    jobject callback = nullptr;
+    jmethodID on_turn_mid = nullptr;
 };
 
 static constexpr int STT_PARAKEET = 0;
@@ -205,6 +229,42 @@ static void dispatch_event(PipelineHandle* h,
 
     if (audio) env->DeleteLocalRef(audio);
     if (text) env->DeleteLocalRef(text);
+}
+
+// ---------------------------------------------------------------------------
+// TurnEvent -> Kotlin onTurn
+//
+//   void onTurn(int type, float timeSec, float[] audio)
+//
+// Only the two speech-boundary events can reach Kotlin. Interruption and
+// InterruptionRecovered need set_agent_speaking(), which nothing calls on a
+// standalone detector — there is no agent playback to barge into.
+// ---------------------------------------------------------------------------
+static void dispatch_turn(VadHandle* h, const speech_core::TurnEvent& event) {
+    jint type;
+    switch (event.type) {
+        case speech_core::TurnEvent::UserSpeechStarted: type = 0; break;
+        case speech_core::TurnEvent::UserSpeechEnded:   type = 1; break;
+        default: return;
+    }
+
+    if (!h->callback) return;
+
+    JNIEnv* env = get_env(h->jvm);
+    if (!env) return;
+
+    jfloatArray audio = nullptr;
+    if (h->emit_audio && !event.audio.empty()) {
+        audio = env->NewFloatArray(static_cast<jsize>(event.audio.size()));
+        if (audio) {
+            env->SetFloatArrayRegion(audio, 0,
+                static_cast<jsize>(event.audio.size()), event.audio.data());
+        }
+    }
+
+    env->CallVoidMethod(h->callback, h->on_turn_mid, type, event.time, audio);
+
+    if (audio) env->DeleteLocalRef(audio);
 }
 
 // ---------------------------------------------------------------------------
@@ -756,6 +816,127 @@ Java_audio_soniqo_speech_NativeBridge_nativePipelineCancelSynthesis(
 {
     auto* h = reinterpret_cast<PipelineHandle*>(handle);
     if (h && h->tts) h->tts->cancel();
+}
+
+// ---------------------------------------------------------------------------
+// VAD-only detector
+// ---------------------------------------------------------------------------
+
+JNIEXPORT jlong JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeCreateVad(
+    JNIEnv* env, jobject /*thiz*/,
+    jstring modelDir,
+    jfloat onsetThreshold, jfloat offsetThreshold,
+    jfloat minSpeechDurationSec, jfloat endOfSpeechSilenceSec,
+    jfloat preSpeechBufferSec, jfloat maxUtteranceDurationSec,
+    jboolean emitUtteranceAudio, jobject callback)
+{
+    auto dir = jstring_to_string(env, modelDir);
+
+    auto h = std::make_unique<VadHandle>();
+    env->GetJavaVM(&h->jvm);
+    h->emit_audio = emitUtteranceAudio;
+    h->callback = env->NewGlobalRef(callback);
+
+    jclass cls = env->GetObjectClass(callback);
+    h->on_turn_mid = env->GetMethodID(cls, "onTurn", "(IF[F)V");
+
+    try {
+        // hw_accel=false to match the pipeline: Silero is 2 MB and runs a
+        // 32 ms chunk in under a millisecond on CPU, so a hardware provider
+        // only adds a conversion path that can fail.
+        h->vad = std::make_unique<speech_core::SileroVad>(
+            dir + "/silero-vad.onnx", /*hw_accel=*/false);
+
+        speech_core::AgentConfig cfg;
+        cfg.vad.onset = onsetThreshold;
+        cfg.vad.offset = offsetThreshold;
+        cfg.vad.min_speech_duration = minSpeechDurationSec;
+        cfg.vad.min_silence_duration = endOfSpeechSilenceSec;
+        cfg.vad.pre_speech_buffer_duration = preSpeechBufferSec;
+        cfg.max_utterance_duration = maxUtteranceDurationSec;
+        // No STT to run early and no agent playback to interrupt: both would
+        // only split turns the caller never asked to have split.
+        cfg.eager_stt = false;
+        cfg.allow_interruptions = false;
+
+        VadHandle* raw = h.get();
+        h->detector = std::make_unique<speech_core::TurnDetector>(
+            *h->vad, cfg,
+            [raw](const speech_core::TurnEvent& e) { dispatch_turn(raw, e); });
+
+        LOGI("VAD detector created");
+    } catch (const std::exception& e) {
+        LOGE("VAD detector creation failed: %s", e.what());
+        if (h->callback) env->DeleteGlobalRef(h->callback);
+        jclass ex_cls = env->FindClass("java/lang/RuntimeException");
+        if (ex_cls) {
+            std::string msg = std::string("Native VAD detector failed: ") + e.what();
+            env->ThrowNew(ex_cls, msg.c_str());
+        }
+        return 0;
+    }
+
+    return reinterpret_cast<jlong>(h.release());
+}
+
+JNIEXPORT void JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeDestroyVad(
+    JNIEnv* env, jobject /*thiz*/, jlong handle)
+{
+    auto* h = reinterpret_cast<VadHandle*>(handle);
+    if (h) {
+        if (h->callback) env->DeleteGlobalRef(h->callback);
+        delete h;
+    }
+}
+
+JNIEXPORT void JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativePushVadAudio(
+    JNIEnv* env, jobject /*thiz*/, jlong handle,
+    jfloatArray samples, jint count)
+{
+    auto* h = reinterpret_cast<VadHandle*>(handle);
+    if (!h || !h->detector) return;
+
+    float* data = env->GetFloatArrayElements(samples, nullptr);
+    {
+        std::lock_guard<std::mutex> lock(h->mutex);
+        h->detector->push_audio(data, static_cast<size_t>(count));
+    }
+    env->ReleaseFloatArrayElements(samples, data, JNI_ABORT);
+}
+
+JNIEXPORT void JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeFlushVad(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
+{
+    auto* h = reinterpret_cast<VadHandle*>(handle);
+    if (!h || !h->detector) return;
+    std::lock_guard<std::mutex> lock(h->mutex);
+    h->detector->flush();
+}
+
+JNIEXPORT void JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeResetVad(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
+{
+    auto* h = reinterpret_cast<VadHandle*>(handle);
+    if (!h || !h->detector) return;
+    std::lock_guard<std::mutex> lock(h->mutex);
+    // Independent audio session: also drops the pre-speech ring and the
+    // model's recurrent state so the next stream starts clean.
+    h->detector->reset_for_new_stream();
+}
+
+JNIEXPORT jboolean JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeVadInSpeech(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
+{
+    auto* h = reinterpret_cast<VadHandle*>(handle);
+    if (!h || !h->detector) return JNI_FALSE;
+    std::lock_guard<std::mutex> lock(h->mutex);
+    return h->detector->in_speech() ? JNI_TRUE : JNI_FALSE;
 }
 
 } // extern "C"

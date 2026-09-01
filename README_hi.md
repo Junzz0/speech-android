@@ -99,6 +99,40 @@ pipeline.start()
 pipeline.pushAudio(samples)
 ```
 
+### केवल वॉइस ऐक्टिविटी डिटेक्शन
+
+जिन ऐप्स को सिर्फ़ यह जानना है कि कोई *कब* बोल रहा है — push-to-talk गेटिंग,
+रिकॉर्डिंग सेगमेंटेशन, आवाज़ से जगाना — वे अकेले Silero लोड कर सकती हैं: डिफ़ॉल्ट
+मॉडल सेट के ~500 MB की जगह 2 MB डाउनलोड और 10 MB से कम RAM। न STT, न TTS, न
+पाइपलाइन।
+
+```kotlin
+val detector = VadDetector(
+    VadConfig(
+        modelDir = ModelManager.ensureVadModels(context),
+        emitUtteranceAudio = true, // कैप्चर किया गया सेगमेंट पाने के लिए चालू करें
+    )
+)
+
+detector.events.collect { event ->
+    when (event) {
+        is VadEvent.SpeechStarted -> startRecordingUi()
+        is VadEvent.SpeechEnded -> saveSegment(event.audio) // 16 kHz float32
+    }
+}
+
+// 16 kHz मोनो float32, 512-सैंपल फ़्रेम
+detector.pushAudio(samples)
+// स्ट्रीम खत्म होने पर खुला सेगमेंट बंद करें
+detector.flush()
+```
+
+`VadConfig` वही टर्न डिटेक्शन उजागर करता है जो पाइपलाइन भीतर इस्तेमाल करती है:
+onset और offset थ्रेशोल्ड, न्यूनतम स्पीच अवधि, स्पीच-अंत की चुप्पी, और वह
+प्री-स्पीच बफ़र जो पहला अक्षर बचाए रखता है। यह पथ
+`ModelManager.ensureVadModels()` और अलग `models_vad/` कैश उपयोग करता है, इसलिए
+STT/TTS बंडल कभी डाउनलोड नहीं होते।
+
 ## स्रोत से बिल्ड करें
 
 ```bash

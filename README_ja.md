@@ -99,6 +99,40 @@ pipeline.start()
 pipeline.pushAudio(samples)
 ```
 
+### 音声区間検出のみ
+
+誰かが話している*タイミング*だけを知りたいアプリ — プッシュトゥトークの制御、
+録音の分割、音声によるウェイクアップ — は Silero 単体を読み込めます。デフォルト
+のモデルセット約 500 MB に対し、ダウンロード 2 MB・メモリ 10 MB 未満です。STT も
+TTS もパイプラインも読み込みません。
+
+```kotlin
+val detector = VadDetector(
+    VadConfig(
+        modelDir = ModelManager.ensureVadModels(context),
+        emitUtteranceAudio = true, // 取得した区間を受け取る場合にオンにする
+    )
+)
+
+detector.events.collect { event ->
+    when (event) {
+        is VadEvent.SpeechStarted -> startRecordingUi()
+        is VadEvent.SpeechEnded -> saveSegment(event.audio) // 16 kHz float32
+    }
+}
+
+// 16 kHz モノラル float32、512 サンプル単位
+detector.pushAudio(samples)
+// ストリーム終了時に開いたままの区間を閉じる
+detector.flush()
+```
+
+`VadConfig` はパイプラインが内部で使うターン検出をそのまま公開します。オンセット /
+オフセットのしきい値、最短発話長、発話終了とみなす無音長、そして最初の音節を
+取りこぼさないプリスピーチバッファです。このパスは `ModelManager.ensureVadModels()`
+と専用の `models_vad/` キャッシュを使うため、STT/TTS のバンドルを取得することは
+ありません。
+
 ## ソースからビルド
 
 ```bash

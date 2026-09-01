@@ -83,7 +83,8 @@ for the full model-file inventory.
 - `sdk/src/main/cpp/CMakeLists.txt` — pulls speech-core in via `add_subdirectory` with `SPEECH_CORE_WITH_ONNX=ON`; the speech_core_models target provides every model wrapper.
 - `sdk/src/main/kotlin/audio/soniqo/speech/SpeechPipeline.kt` — main public Kotlin API.
 - `sdk/src/main/kotlin/audio/soniqo/speech/NativeBridge.kt` — JNI surface (must stay in lockstep with `jni_bridge.cpp`).
-- `sdk/src/main/kotlin/audio/soniqo/speech/ModelManager.kt` — model download + caching.
+- `sdk/src/main/kotlin/audio/soniqo/speech/VadDetector.kt` — VAD-only public API (Silero + speech-core `TurnDetector`, no pipeline). The listening counterpart to `SpeechSynthesizer`.
+- `sdk/src/main/kotlin/audio/soniqo/speech/ModelManager.kt` — model download + caching. Three profiles: full pipeline (`models/`), TTS-only (`models_tts/`), VAD-only (`models_vad/`).
 
 Native code that used to live here (`models/*.{cpp,h}`, `audio/{fft,mel,stft}.cpp`,
 `util/json.h`, `onnx_engine.h`) is now under speech-core. Modify it via a

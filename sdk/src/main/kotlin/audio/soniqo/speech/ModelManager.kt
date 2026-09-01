@@ -59,10 +59,7 @@ object ModelManager {
         ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
     ): List<ModelFile> {
         val suffix = if (precision == ModelPrecision.INT8) "-int8" else ""
-        val files = mutableListOf(
-            // VAD (no quantized variant — already 2 MB)
-            ModelFile("Silero-VAD-v5-ONNX", "silero-vad.onnx"),
-        )
+        val files = vadModels().toMutableList()
 
         // STT — Parakeet-EOU low-memory streaming, Parakeet TDT v3, or
         // Nemotron-3.5 multilingual.
@@ -145,6 +142,13 @@ object ModelManager {
         return files
         // Note: FP32 Parakeet encoder also needs parakeet-encoder.onnx.data.
     }
+
+    /** VAD (no quantized variant — already 2 MB). Shared by the full pipeline
+     *  set and the VAD-only profile so both name one file. */
+    @VisibleForTesting
+    internal fun vadModels(): List<ModelFile> = listOf(
+        ModelFile("Silero-VAD-v5-ONNX", "silero-vad.onnx"),
+    )
 
     @VisibleForTesting
     internal fun ttsModels(ttsModel: TtsModel): List<ModelFile> = when (ttsModel) {
@@ -317,6 +321,26 @@ object ModelManager {
     }
 
     /**
+     * True iff the VAD-only cache contains Silero. Used by the [VadDetector]
+     * path, where downloading STT/TTS/enhancer assets would be ~500 MB of
+     * overhead for a 2 MB model.
+     */
+    fun areVadModelsReady(context: Context): Boolean {
+        val dir = File(vadModelDir(context))
+        if (!dir.exists()) return false
+
+        val versionFile = File(dir, "version.txt")
+        val cached = versionFile.takeIf { it.exists() }?.readText()?.trim()?.toIntOrNull() ?: 0
+        if (cached < MODEL_VERSION) return false
+        if (cachedModelSet(dir) != vadModelSetKey()) return false
+
+        return vadModels().all { model ->
+            val dest = File(dir, model.localFilename)
+            dest.exists() && isValidModel(dest, model.filename)
+        }
+    }
+
+    /**
      * True iff the LLM cache contains a valid FunctionGemma bundle.
      * Cheap and side-effect free — does not start a download.
      */
@@ -350,6 +374,10 @@ object ModelManager {
     /** Path to the TTS-only model directory, without downloading. */
     fun ttsModelDir(context: Context): String =
         File(context.filesDir, "models_tts").absolutePath
+
+    /** Path to the VAD-only model directory, without downloading. */
+    fun vadModelDir(context: Context): String =
+        File(context.filesDir, "models_vad").absolutePath
 
     /** Path to the LLM model directory, without downloading. */
     fun llmModelDir(
@@ -444,6 +472,34 @@ object ModelManager {
         downloadMissingModels(dir, ttsModels(ttsModel), onProgress)
 
         File(dir, "precision.txt").writeText("TTS")
+        versionFile.writeText(MODEL_VERSION.toString())
+        File(dir, MODEL_SET_FILENAME).writeText(requestedModelSet)
+
+        dir.absolutePath
+    }
+
+    /**
+     * Returns the VAD-only model directory path, downloading Silero if needed.
+     * Separate from [ensureModels] so an app that only detects speech never
+     * pulls the STT/TTS bundles.
+     */
+    suspend fun ensureVadModels(
+        context: Context,
+        onProgress: ((Progress) -> Unit)? = null,
+    ): String = withContext(Dispatchers.IO) {
+        val dir = File(vadModelDir(context))
+        dir.mkdirs()
+
+        val versionFile = File(dir, "version.txt")
+        val cached = versionFile.takeIf { it.exists() }?.readText()?.trim()?.toIntOrNull() ?: 0
+        val requestedModelSet = vadModelSetKey()
+        if (cached < MODEL_VERSION || cachedModelSet(dir) != requestedModelSet) {
+            clearModelCache(dir)
+        }
+
+        downloadMissingModels(dir, vadModels(), onProgress)
+
+        File(dir, "precision.txt").writeText("VAD")
         versionFile.writeText(MODEL_VERSION.toString())
         File(dir, MODEL_SET_FILENAME).writeText(requestedModelSet)
 
@@ -669,6 +725,12 @@ object ModelManager {
         "v$MODEL_VERSION",
         "profile=TTS",
         "tts=${ttsCacheName(ttsModel)}",
+    ).joinToString("|")
+
+    @VisibleForTesting
+    internal fun vadModelSetKey(): String = listOf(
+        "v$MODEL_VERSION",
+        "profile=VAD",
     ).joinToString("|")
 
     private fun ttsCacheName(ttsModel: TtsModel): String =
