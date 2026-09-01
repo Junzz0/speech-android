@@ -72,6 +72,35 @@ internal object NativeBridge {
         voice: String,
     ): ByteArray
 
+    // VAD-only detector: Silero + speech_core::TurnDetector, no STT/TTS model
+    // and no VoicePipeline. Must stay in lockstep with the VadHandle section
+    // of jni_bridge.cpp.
+    external fun nativeCreateVad(
+        modelDir: String,
+        onsetThreshold: Float,
+        offsetThreshold: Float,
+        minSpeechDurationSec: Float,
+        endOfSpeechSilenceSec: Float,
+        preSpeechBufferSec: Float,
+        maxUtteranceDurationSec: Float,
+        emitUtteranceAudio: Boolean,
+        callback: VadCallback,
+    ): Long
+
+    external fun nativeDestroyVad(handle: Long)
+    external fun nativePushVadAudio(handle: Long, samples: FloatArray, count: Int)
+    external fun nativeFlushVad(handle: Long)
+    external fun nativeResetVad(handle: Long)
+    external fun nativeVadInSpeech(handle: Long): Boolean
+
+    /** Called from native code on the thread that pushed the audio. */
+    fun interface VadCallback {
+        // type: 0=SpeechStarted, 1=SpeechEnded. `audio` is the utterance
+        // (with its pre-speech head) on SpeechEnded, null when the detector
+        // was created with emitUtteranceAudio = false.
+        fun onTurn(type: Int, timeSec: Float, audio: FloatArray?)
+    }
+
     /** Called from native code on the pipeline worker thread. */
     interface EventCallback {
         fun onEvent(

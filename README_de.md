@@ -101,6 +101,40 @@ pipeline.start()
 pipeline.pushAudio(samples)
 ```
 
+### Nur Sprachaktivitätserkennung
+
+Apps, die nur wissen müssen, *wann* jemand spricht — Push-to-Talk-Steuerung,
+Aufnahme-Segmentierung, Aufwachen per Stimme —, können Silero allein laden:
+2 MB Download und unter 10 MB RAM statt der ~500 MB des Standard-Modellsatzes.
+Kein STT, kein TTS, keine Pipeline.
+
+```kotlin
+val detector = VadDetector(
+    VadConfig(
+        modelDir = ModelManager.ensureVadModels(context),
+        emitUtteranceAudio = true, // einschalten, um das erfasste Segment zu erhalten
+    )
+)
+
+detector.events.collect { event ->
+    when (event) {
+        is VadEvent.SpeechStarted -> startRecordingUi()
+        is VadEvent.SpeechEnded -> saveSegment(event.audio) // 16 kHz float32
+    }
+}
+
+// 16 kHz Mono float32, 512-Sample-Frames
+detector.pushAudio(samples)
+// offenes Segment am Ende des Streams schließen
+detector.flush()
+```
+
+`VadConfig` legt dieselbe Turn-Erkennung offen, die die Pipeline intern nutzt:
+Onset- und Offset-Schwellen, minimale Sprechdauer, Stille am Sprechende und den
+Pre-Speech-Puffer, der die erste Silbe erhält. Dieser Pfad nutzt
+`ModelManager.ensureVadModels()` und einen eigenen `models_vad/`-Cache und lädt
+daher nie die STT/TTS-Bundles.
+
 ## Aus dem Quellcode bauen
 
 ```bash

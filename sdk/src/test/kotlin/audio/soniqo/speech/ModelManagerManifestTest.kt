@@ -208,6 +208,39 @@ class ModelManagerManifestTest {
     }
 
     @Test
+    fun `vad-only manifest is silero alone`() {
+        assertEquals(
+            listOf(ModelManager.ModelFile("Silero-VAD-v5-ONNX", "silero-vad.onnx")),
+            ModelManager.vadModels(),
+        )
+    }
+
+    @Test
+    fun `vad-only manifest is a subset of every pipeline set`() {
+        // The two profiles must name the same file: a device that already has
+        // the full set and one that only ever ran the detector are validated
+        // against one entry, and models() reuses vadModels() to guarantee it.
+        for (stt in SttModel.entries) {
+            for (tts in TtsModel.entries) {
+                assertTrue(
+                    "$stt/$tts pipeline set must contain the VAD manifest",
+                    modelFiles(sttModel = stt, ttsModel = tts)
+                        .containsAll(ModelManager.vadModels()),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `vad-only model set key is separate from the pipeline and tts caches`() {
+        assertNotEquals(ModelManager.vadModelSetKey(), modelSetKey())
+        assertNotEquals(
+            ModelManager.vadModelSetKey(),
+            ModelManager.ttsModelSetKey(TtsModel.KOKORO_SHORT_TURN),
+        )
+    }
+
+    @Test
     fun `supertonic manifest includes complete voice catalog from LiteRT repo`() {
         val styleFiles = modelFiles(ttsModel = TtsModel.SUPERTONIC)
             .filter { it.filename.startsWith("voice_styles/") }

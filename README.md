@@ -124,6 +124,40 @@ pipeline.start()
 pipeline.pushAudio(samples)
 ```
 
+### Voice activity detection only
+
+Apps that only need to know *when* someone is speaking — push-to-talk
+gating, recording segmentation, wake-on-voice — can load Silero on its own:
+a 2 MB download and under 10 MB of RAM instead of the ~500 MB default set.
+No STT, no TTS, no pipeline.
+
+```kotlin
+val detector = VadDetector(
+    VadConfig(
+        modelDir = ModelManager.ensureVadModels(context),
+        emitUtteranceAudio = true, // opt in to receive the captured segment
+    )
+)
+
+detector.events.collect { event ->
+    when (event) {
+        is VadEvent.SpeechStarted -> startRecordingUi()
+        is VadEvent.SpeechEnded -> saveSegment(event.audio) // 16 kHz float32
+    }
+}
+
+// 16 kHz mono float32, 512-sample frames
+detector.pushAudio(samples)
+// close an open segment when the stream ends
+detector.flush()
+```
+
+`VadConfig` exposes the same turn detection the pipeline uses internally:
+onset and offset thresholds, minimum speech duration, end-of-speech silence,
+and the pre-speech buffer that keeps the first syllable. This path uses
+`ModelManager.ensureVadModels()` and a separate `models_vad/` cache, so it
+never pulls the STT/TTS bundles.
+
 ### FunctionGemma 270M (on-device tool-calling LLM)
 
 The SDK ships the prompt formatter (`FunctionGemmaPrompt`), parser

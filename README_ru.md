@@ -101,6 +101,40 @@ pipeline.start()
 pipeline.pushAudio(samples)
 ```
 
+### Только детекция речевой активности
+
+Приложениям, которым нужно знать лишь *когда* человек говорит — управление
+push-to-talk, нарезка записи, пробуждение по голосу, — достаточно загрузить
+один Silero: 2 МБ загрузки и меньше 10 МБ памяти вместо ~500 МБ набора по
+умолчанию. Без STT, без TTS, без конвейера.
+
+```kotlin
+val detector = VadDetector(
+    VadConfig(
+        modelDir = ModelManager.ensureVadModels(context),
+        emitUtteranceAudio = true, // включите, чтобы получать записанный фрагмент
+    )
+)
+
+detector.events.collect { event ->
+    when (event) {
+        is VadEvent.SpeechStarted -> startRecordingUi()
+        is VadEvent.SpeechEnded -> saveSegment(event.audio) // 16 кГц float32
+    }
+}
+
+// 16 кГц моно float32, кадры по 512 отсчётов
+detector.pushAudio(samples)
+// закрывает открытый фрагмент в конце потока
+detector.flush()
+```
+
+`VadConfig` открывает ту же детекцию реплик, что конвейер использует внутри:
+пороги начала и конца, минимальную длительность речи, тишину конца реплики и
+пред-речевой буфер, сохраняющий первый слог. Этот путь использует
+`ModelManager.ensureVadModels()` и отдельный кеш `models_vad/`, поэтому пакеты
+STT/TTS не скачиваются никогда.
+
 ## Сборка из исходного кода
 
 ```bash

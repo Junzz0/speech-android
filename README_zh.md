@@ -101,6 +101,38 @@ pipeline.start()
 pipeline.pushAudio(samples)
 ```
 
+### 仅语音活动检测
+
+只需知道*何时*有人说话的应用——按住说话门控、录音分段、语音唤醒——可以单独加载
+Silero:下载 2 MB、占用不到 10 MB 内存,而非默认模型集的约 500 MB。不加载 STT、
+TTS 或管线。
+
+```kotlin
+val detector = VadDetector(
+    VadConfig(
+        modelDir = ModelManager.ensureVadModels(context),
+        emitUtteranceAudio = true, // 选择接收捕获到的片段
+    )
+)
+
+detector.events.collect { event ->
+    when (event) {
+        is VadEvent.SpeechStarted -> startRecordingUi()
+        is VadEvent.SpeechEnded -> saveSegment(event.audio) // 16 kHz float32
+    }
+}
+
+// 16 kHz 单声道 float32,512 采样一帧
+detector.pushAudio(samples)
+// 流结束时关闭仍打开的片段
+detector.flush()
+```
+
+`VadConfig` 暴露管线内部使用的同一套轮次检测:起始与结束阈值、最短语音时长、
+语音结束静音时长,以及保留首个音节的前置语音缓冲。该路径使用
+`ModelManager.ensureVadModels()` 和独立的 `models_vad/` 缓存,因此永远不会拉取
+STT/TTS 模型包。
+
 ## 从源代码构建
 
 ```bash
