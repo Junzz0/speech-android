@@ -33,6 +33,7 @@ object ModelManager {
     private const val NEMOTRON_LITERT_INT8_REVISION = "v1.0.0"
     private const val NEMOTRON_LITERT_FP16_REVISION =
         "1503a9a1eb75b813b83ba65bf5e9fecea4a46091"
+    private const val SMART_TURN_REVISION = "b48fdbe20772bcec1fef02f4a1a355236ef6359e"
 
     // Bump when models on HuggingFace are updated to trigger cache invalidation.
     // v6: default STT switched to Parakeet-EOU-120M-ONNX-INT8, the low-memory
@@ -62,6 +63,7 @@ object ModelManager {
         sttBackend: SttBackend = SttBackend.ONNX,
         ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
         supertonicLatentBuckets: Boolean = false,
+        enableSmartTurn: Boolean = false,
     ): List<ModelFile> {
         val suffix = if (precision == ModelPrecision.INT8) "-int8" else ""
         val files = vadModels().toMutableList()
@@ -144,6 +146,9 @@ object ModelManager {
 
         // Noise cancellation
         files += ModelFile("DeepFilterNet3-ONNX", "deepfilter-auxiliary.bin")
+        if (enableSmartTurn) {
+            files += smartTurnModels()
+        }
         return files
         // Note: FP32 Parakeet encoder also needs parakeet-encoder.onnx.data.
     }
@@ -153,6 +158,19 @@ object ModelManager {
     @VisibleForTesting
     internal fun vadModels(): List<ModelFile> = listOf(
         ModelFile("Silero-VAD-v5-ONNX", "silero-vad.onnx"),
+    )
+
+    /** Optional end-of-turn classifier. Android always uses the dynamic-int8
+     *  graph: it saves about 22 MB over fp32 and keeps the same raw-audio I/O
+     *  contract. The immutable revision prevents a model re-export from
+     *  changing that contract underneath an installed SDK. */
+    @VisibleForTesting
+    internal fun smartTurnModels(): List<ModelFile> = listOf(
+        ModelFile(
+            repo = "Smart-Turn-v3.2-ONNX",
+            filename = "smart-turn-v3.2-int8.onnx",
+            revision = SMART_TURN_REVISION,
+        ),
     )
 
     @VisibleForTesting
@@ -297,6 +315,7 @@ object ModelManager {
         sttBackend: SttBackend = SttBackend.ONNX,
         ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
         supertonicLatentBuckets: Boolean = false,
+        enableSmartTurn: Boolean = false,
     ): Boolean {
         val dir = modelDirFile(context, precision, sttModel, sttBackend, ttsModel)
         if (!dir.exists()) return false
@@ -306,7 +325,10 @@ object ModelManager {
         if (cached < MODEL_VERSION) return false
         if (cachedModelSet(dir) != modelSetKey(precision, sttModel, sttBackend, ttsModel)) return false
 
-        val fileList = models(precision, sttModel, sttBackend, ttsModel, supertonicLatentBuckets)
+        val fileList = models(
+            precision, sttModel, sttBackend, ttsModel,
+            supertonicLatentBuckets, enableSmartTurn,
+        )
         val allFiles = if (precision == ModelPrecision.FP32 && sttModel == SttModel.PARAKEET) {
             fileList + ModelFile("Parakeet-TDT-0.6B-ONNX", "parakeet-encoder.onnx.data")
         } else {
@@ -436,6 +458,7 @@ object ModelManager {
         ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
         onProgress: ((Progress) -> Unit)? = null,
         supertonicLatentBuckets: Boolean = false,
+        enableSmartTurn: Boolean = false,
     ): String = withContext(Dispatchers.IO) {
         val dir = modelDirFile(context, precision, sttModel, sttBackend, ttsModel)
         dir.mkdirs()
@@ -454,7 +477,10 @@ object ModelManager {
         // bytes=N- on the next attempt. Stale .tmp from an old MODEL_VERSION
         // or from a different model set are already wiped above.
 
-        val fileList = models(precision, sttModel, sttBackend, ttsModel, supertonicLatentBuckets)
+        val fileList = models(
+            precision, sttModel, sttBackend, ttsModel,
+            supertonicLatentBuckets, enableSmartTurn,
+        )
         // FP32 Parakeet encoder needs the external data file.
         val allFiles = if (precision == ModelPrecision.FP32 && sttModel == SttModel.PARAKEET) {
             fileList + ModelFile("Parakeet-TDT-0.6B-ONNX", "parakeet-encoder.onnx.data")
@@ -649,10 +675,18 @@ object ModelManager {
         sttModel: SttModel = SttModel.PARAKEET_EOU,
         sttBackend: SttBackend = SttBackend.ONNX,
         ttsModel: TtsModel = TtsModel.KOKORO_SHORT_TURN,
+        enableSmartTurn: Boolean = false,
     ): Long {
         val dir = modelDirFile(context, precision, sttModel, sttBackend, ttsModel)
         val stale = cacheIsStale(dir, modelSetKey(precision, sttModel, sttBackend, ttsModel))
-        return plannedBytes(dir, models(precision, sttModel, sttBackend, ttsModel), stale)
+        return plannedBytes(
+            dir,
+            models(
+                precision, sttModel, sttBackend, ttsModel,
+                enableSmartTurn = enableSmartTurn,
+            ),
+            stale,
+        )
     }
 
     /** [plannedModelBytes] for the FunctionGemma bundle fetched by [ensureLlmModels]. */
@@ -959,6 +993,7 @@ object ModelManager {
         "kokoro-e2e.onnx" to 3_047_254L,
         "kokoro-e2e-realtime.onnx" to 2_413_312L,
         "kokoro-e2e.onnx.data" to 324_564_624L,
+        "smart-turn-v3.2-int8.onnx" to 11_123_370L,
         // Pocket TTS bundle — the Control demo's default TTS, so these matter
         // for its bar; without them the total under-counts by ~126 MB and then
         // visibly grows as the files self-correct to Content-Length.
@@ -1031,6 +1066,7 @@ object ModelManager {
         "text_conditioner.onnx" to 15_000_000L,          // Pocket text encoder, ~16.4 MB
         "token_scores.json" to 100_000L,                 // Pocket tokenizer scores
         "silero-vad.onnx" to 500_000L,                   // ~2 MB
+        "smart-turn-v3.2-int8.onnx" to 10_000_000L,      // ~11.1 MB
         "model.litertlm" to 200_000_000L,                // ~283 MB FunctionGemma bundle
         "model-lora16-android.litertlm" to 300_000_000L, // ~327 MB LoRA-capable base
         "control-r4-rank16.tflite" to 9_000_000L,        // ~9.5 MB Control adapter

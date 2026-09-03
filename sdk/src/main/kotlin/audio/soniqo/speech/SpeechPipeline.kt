@@ -123,7 +123,7 @@ interface SpeechPipeline : AutoCloseable {
 
     companion object {
         operator fun invoke(config: SpeechConfig): SpeechPipeline {
-            config.requireValidLanguageConfiguration()
+            config.requireValidConfiguration()
             return SpeechPipelineImpl(config)
         }
     }
@@ -171,6 +171,9 @@ internal class SpeechPipelineImpl(config: SpeechConfig) : SpeechPipeline {
         config.partialTranscriptionInterval,
         config.endOfSpeechSilenceSec,
         config.beamSize,
+        config.enableSmartTurn,
+        config.turnCompletionThreshold,
+        config.turnCompletionMaxSilenceSec,
     ).also { h ->
         if (h == 0L) throw IllegalStateException(
             "Failed to create native pipeline. Models may be corrupt — " +

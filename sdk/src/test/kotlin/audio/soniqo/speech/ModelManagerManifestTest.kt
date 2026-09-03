@@ -23,6 +23,7 @@ class ModelManagerManifestTest {
         assertEquals(SttModel.PARAKEET_EOU, SpeechConfig().sttModel)
         assertEquals(TtsModel.KOKORO_SHORT_TURN, SpeechConfig().ttsModel)
         assertFalse(SpeechConfig().useNnapi)
+        assertFalse(SpeechConfig().enableSmartTurn)
         assertEquals(TtsModel.KOKORO_SHORT_TURN, SpeechSynthesizerConfig().ttsModel)
         assertFalse(SpeechSynthesizerConfig().useNnapi)
     }
@@ -212,6 +213,29 @@ class ModelManagerManifestTest {
         assertEquals(
             listOf(ModelManager.ModelFile("Silero-VAD-v5-ONNX", "silero-vad.onnx")),
             ModelManager.vadModels(),
+        )
+    }
+
+    @Test
+    fun `Smart Turn manifest is opt-in and pinned`() {
+        val expected = ModelManager.ModelFile(
+            repo = "Smart-Turn-v3.2-ONNX",
+            filename = "smart-turn-v3.2-int8.onnx",
+            revision = "b48fdbe20772bcec1fef02f4a1a355236ef6359e",
+        )
+
+        assertEquals(listOf(expected), ModelManager.smartTurnModels())
+        assertFalse(modelFiles().contains(expected))
+        assertTrue(modelFiles(enableSmartTurn = true).contains(expected))
+    }
+
+    @Test
+    fun `Smart Turn augments the existing pipeline cache`() {
+        // Enabling the optional model must not send an existing ~493 MB cache
+        // to a second directory or invalidate its already-downloaded files.
+        assertEquals(
+            modelFiles() + ModelManager.smartTurnModels(),
+            modelFiles(enableSmartTurn = true),
         )
     }
 
@@ -444,8 +468,12 @@ class ModelManagerManifestTest {
         sttModel: SttModel = SttModel.PARAKEET_EOU,
         sttBackend: SttBackend = SttBackend.ONNX,
         ttsModel: TtsModel = TtsModel.KOKORO,
+        enableSmartTurn: Boolean = false,
     ): List<ModelManager.ModelFile> =
-        ModelManager.models(precision, sttModel, sttBackend, ttsModel)
+        ModelManager.models(
+            precision, sttModel, sttBackend, ttsModel,
+            enableSmartTurn = enableSmartTurn,
+        )
 
     private fun modelSetKey(
         precision: ModelPrecision = ModelPrecision.INT8,

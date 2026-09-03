@@ -55,6 +55,13 @@ class ModelManagerPlanningTest {
     }
 
     @Test
+    fun `Smart Turn adds its pinned int8 graph to the plan`() {
+        val without = ModelManager.plannedModelBytes(context)
+        val with = ModelManager.plannedModelBytes(context, enableSmartTurn = true)
+        assertEquals(11_123_370L, with - without)
+    }
+
+    @Test
     fun `fresh install plans the exact FunctionGemma bundle size`() {
         assertEquals(297_212_528L, ModelManager.plannedLlmBytes(context))
     }

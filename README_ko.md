@@ -74,7 +74,7 @@ Kokoro와 Supertonic 모두 직접 합성 시 호출 단위로 음성 프리셋�
 
 ```kotlin
 dependencies {
-    implementation("audio.soniqo:speech:0.0.19")
+    implementation("audio.soniqo:speech:0.0.20")
 }
 ```
 
@@ -100,6 +100,30 @@ pipeline.start()
 // 마이크에서 16kHz 모노 float32 PCM 입력
 pipeline.pushAudio(samples)
 ```
+
+### 턴 종료 감지
+
+VAD는 침묵을 감지하지만, 그 멈춤이 화자의 생각이 끝났다는 의미인지는 판단할 수
+없습니다. Smart Turn v3.2는 현재 턴의 마지막 8초를 살펴보고 미완성 턴을 열린
+상태로 유지하는 선택적 오디오 기반 분류기입니다.
+
+```kotlin
+val modelDir = ModelManager.ensureModels(context, enableSmartTurn = true)
+
+val pipeline = SpeechPipeline(
+    SpeechConfig(
+        modelDir = modelDir,
+        enableSmartTurn = true,
+        turnCompletionThreshold = 0.5f,
+        turnCompletionMaxSilenceSec = 2.0f,
+    )
+)
+```
+
+옵트인 다운로드는 고정된 리비전의 11.1 MB INT8 그래프를 추가합니다. 추론은 모든
+오디오 프레임이 아니라 VAD가 확인한 각 멈춤 뒤에 한 번 실행됩니다. 멈춤이 거부된
+뒤 말이 재개되면 같은 턴이 이어지며, 최대 침묵 제한이 최종 종료를 보장합니다.
+Smart Turn은 Pipecat/Daily가 만들었으며 BSD-2-Clause로 배포됩니다.
 
 ### 음성 활동 감지 전용
 

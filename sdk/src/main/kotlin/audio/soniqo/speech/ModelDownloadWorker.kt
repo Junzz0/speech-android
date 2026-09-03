@@ -77,6 +77,7 @@ class ModelDownloadWorker(
         // and Wi-Fi power-save that would kill an in-app download.
         val includeLlm = inputData.getBoolean(KEY_INCLUDE_LLM, false)
         val supertonicLatentBuckets = inputData.getBoolean(KEY_SUPERTONIC_LATENT_BUCKETS, false)
+        val enableSmartTurn = inputData.getBoolean(KEY_ENABLE_SMART_TURN, false)
 
         runCatching { setForeground(buildForegroundInfo(0, "Preparing speech models…")) }
 
@@ -86,6 +87,7 @@ class ModelDownloadWorker(
         // of two sweeps that visibly reset to zero in the middle.
         val plannedPipeline = ModelManager.plannedModelBytes(
             applicationContext, precision, sttModel, sttBackend, ttsModel,
+            enableSmartTurn,
         )
         val plannedLlm =
             if (includeLlm) ModelManager.plannedLlmBytes(applicationContext, llmModel) else 0L
@@ -171,6 +173,7 @@ class ModelDownloadWorker(
                 ttsModel = ttsModel,
                 onProgress = report,
                 supertonicLatentBuckets = supertonicLatentBuckets,
+                enableSmartTurn = enableSmartTurn,
             )
             if (includeLlm) {
                 // Hand the bar over to the LLM phase: what the pipeline phase
@@ -314,6 +317,7 @@ class ModelDownloadWorker(
         const val KEY_TTS_MODEL = "ttsModel"
         const val KEY_INCLUDE_LLM = "includeLlm"
         const val KEY_SUPERTONIC_LATENT_BUCKETS = "supertonicLatentBuckets"
+        const val KEY_ENABLE_SMART_TURN = "enableSmartTurn"
         const val KEY_LLM_MODEL = "llmModel"
 
         // Output keys
@@ -358,13 +362,15 @@ class ModelDownloadWorker(
             includeLlm: Boolean = false,
             llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
             supertonicLatentBuckets: Boolean = false,
+            enableSmartTurn: Boolean = false,
         ): String {
             if (
                 precision == ModelPrecision.INT8 &&
                 sttModel == SttModel.PARAKEET_EOU &&
                 sttBackend == SttBackend.ONNX &&
                 ttsModel.isKokoro &&
-                !includeLlm
+                !includeLlm &&
+                !enableSmartTurn
             ) {
                 return UNIQUE_NAME
             }
@@ -375,7 +381,8 @@ class ModelDownloadWorker(
                 else -> ".llm.${llmModel.name}"
             }
             val ttsName = if (ttsModel.isKokoro) TtsModel.KOKORO.name else ttsModel.name
-            return "$UNIQUE_NAME.${precision.name}.${sttModel.name}.${sttBackend.name}.$ttsName$buckets$llm"
+            val smartTurn = if (enableSmartTurn) ".smartTurn" else ""
+            return "$UNIQUE_NAME.${precision.name}.${sttModel.name}.${sttBackend.name}.$ttsName$buckets$smartTurn$llm"
         }
 
         fun request(
@@ -386,6 +393,7 @@ class ModelDownloadWorker(
             includeLlm: Boolean = false,
             llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
             supertonicLatentBuckets: Boolean = false,
+            enableSmartTurn: Boolean = false,
         ) =
             OneTimeWorkRequestBuilder<ModelDownloadWorker>()
                 .setInputData(workDataOf(
@@ -396,6 +404,7 @@ class ModelDownloadWorker(
                     KEY_INCLUDE_LLM to includeLlm,
                     KEY_LLM_MODEL to llmModel.name,
                     KEY_SUPERTONIC_LATENT_BUCKETS to supertonicLatentBuckets,
+                    KEY_ENABLE_SMART_TURN to enableSmartTurn,
                 ))
                 .build()
 
@@ -413,6 +422,7 @@ class ModelDownloadWorker(
             includeLlm: Boolean = false,
             llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
             supertonicLatentBuckets: Boolean = false,
+            enableSmartTurn: Boolean = false,
         ): java.util.UUID {
             val req = request(
                 precision = precision,
@@ -422,6 +432,7 @@ class ModelDownloadWorker(
                 includeLlm = includeLlm,
                 llmModel = llmModel,
                 supertonicLatentBuckets = supertonicLatentBuckets,
+                enableSmartTurn = enableSmartTurn,
             )
             WorkManager.getInstance(context).enqueueUniqueWork(
                 uniqueName(
@@ -432,6 +443,7 @@ class ModelDownloadWorker(
                     includeLlm = includeLlm,
                     llmModel = llmModel,
                     supertonicLatentBuckets = supertonicLatentBuckets,
+                    enableSmartTurn = enableSmartTurn,
                 ),
                 ExistingWorkPolicy.KEEP, req,
             )

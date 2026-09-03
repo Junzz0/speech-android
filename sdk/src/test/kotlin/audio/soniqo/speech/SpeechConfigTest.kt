@@ -13,6 +13,39 @@ class SpeechConfigTest {
     }
 
     @Test
+    fun `Smart Turn is opt-in with speech-core policy defaults`() {
+        val config = SpeechConfig()
+        assertEquals(false, config.enableSmartTurn)
+        assertEquals(0.5f, config.turnCompletionThreshold, 0f)
+        assertEquals(2.0f, config.turnCompletionMaxSilenceSec, 0f)
+    }
+
+    @Test
+    fun `Smart Turn threshold must be a probability`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            SpeechConfig(turnCompletionThreshold = -0.01f).requireValidConfiguration()
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            SpeechConfig(turnCompletionThreshold = 1.01f).requireValidConfiguration()
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            SpeechConfig(turnCompletionThreshold = Float.NaN).requireValidConfiguration()
+        }
+    }
+
+    @Test
+    fun `Smart Turn silence cap accepts zero but rejects invalid durations`() {
+        SpeechConfig(turnCompletionMaxSilenceSec = 0f).requireValidConfiguration()
+        assertThrows(IllegalArgumentException::class.java) {
+            SpeechConfig(turnCompletionMaxSilenceSec = -0.01f).requireValidConfiguration()
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            SpeechConfig(turnCompletionMaxSilenceSec = Float.POSITIVE_INFINITY)
+                .requireValidConfiguration()
+        }
+    }
+
+    @Test
     fun `cn country code is rejected with Chinese language tags`() {
         val error = assertThrows(IllegalArgumentException::class.java) {
             SpeechConfig(

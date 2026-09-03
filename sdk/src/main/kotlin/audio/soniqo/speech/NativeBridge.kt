@@ -22,6 +22,9 @@ internal object NativeBridge {
         partialTranscriptionInterval: Float,
         endOfSpeechSilenceSec: Float,  // seconds of silence ending an utterance
         beamSize: Int,                 // Parakeet-EOU RNN-T beam width; <=1 = greedy
+        enableSmartTurn: Boolean,      // attach Smart Turn v3.2 after VAD pauses
+        turnCompletionThreshold: Float,
+        turnCompletionMaxSilenceSec: Float,
     ): Long
 
     external fun nativeNnapiFallbackReason(): String?

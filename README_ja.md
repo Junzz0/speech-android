@@ -74,7 +74,7 @@ Kokoro と Supertonic はどちらも、直接合成の呼び出しごとに音�
 
 ```kotlin
 dependencies {
-    implementation("audio.soniqo:speech:0.0.19")
+    implementation("audio.soniqo:speech:0.0.20")
 }
 ```
 
@@ -100,6 +100,31 @@ pipeline.start()
 // マイクから 16kHz モノラル float32 PCM を入力
 pipeline.pushAudio(samples)
 ```
+
+### ターン終了検出
+
+VAD は無音を検出できますが、その間が話者の発話完了を意味するかは判断できません。
+Smart Turn v3.2 は、現在のターンの直近 8 秒を確認し、未完了のターンを開いたままに
+するオプションの音声ベース分類器です。
+
+```kotlin
+val modelDir = ModelManager.ensureModels(context, enableSmartTurn = true)
+
+val pipeline = SpeechPipeline(
+    SpeechConfig(
+        modelDir = modelDir,
+        enableSmartTurn = true,
+        turnCompletionThreshold = 0.5f,
+        turnCompletionMaxSilenceSec = 2.0f,
+    )
+)
+```
+
+有効にすると、固定リビジョンの 11.1 MB INT8 グラフが追加でダウンロードされます。
+推論は全音声フレームではなく、VAD が確定した各ポーズの後に 1 回だけ実行されます。
+ポーズが却下されて発話が再開すると同じターンが継続し、最大無音時間によって最終的な
+終了も保証されます。Smart Turn は Pipecat/Daily が開発し、BSD-2-Clause で配布
+されています。
 
 ### 音声区間検出のみ
 

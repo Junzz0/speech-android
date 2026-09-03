@@ -97,7 +97,31 @@ data class SpeechConfig(
      *  mid-utterance — dictating digit sequences, thinking through a
      *  sentence — and get cut off early. */
     val endOfSpeechSilenceSec: Float = 0.5f,
+
+    /** Use Pipecat Smart Turn v3.2 after VAD detects a pause. The classifier
+     *  considers the last eight seconds of the current turn and keeps the turn
+     *  open when the user's prosody sounds incomplete. Requires
+     *  [ModelManager.ensureModels] or [ModelDownloadWorker] to be called with
+     *  their matching `enableSmartTurn = true` option. */
+    val enableSmartTurn: Boolean = false,
+
+    /** Smart Turn probability that confirms the user has finished speaking. */
+    val turnCompletionThreshold: Float = 0.5f,
+
+    /** Maximum silence after Smart Turn vetoes an endpoint. Measured from the
+     *  start of the pause; `0` disables the silence cap. */
+    val turnCompletionMaxSilenceSec: Float = 2.0f,
 )
+
+internal fun SpeechConfig.requireValidConfiguration() {
+    requireValidLanguageConfiguration()
+    require(turnCompletionThreshold in 0f..1f) {
+        "SpeechConfig.turnCompletionThreshold must be between 0 and 1"
+    }
+    require(turnCompletionMaxSilenceSec.isFinite() && turnCompletionMaxSilenceSec >= 0f) {
+        "SpeechConfig.turnCompletionMaxSilenceSec must be finite and non-negative"
+    }
+}
 
 /** Validate language settings before JNI loads models or starts native work. */
 internal fun SpeechConfig.requireValidLanguageConfiguration() {
