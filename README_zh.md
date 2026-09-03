@@ -74,7 +74,7 @@ Kokoro 与 Supertonic 都支持在直接合成时按调用指定音色预设 —
 
 ```kotlin
 dependencies {
-    implementation("audio.soniqo:speech:0.0.19")
+    implementation("audio.soniqo:speech:0.0.20")
 }
 ```
 
@@ -100,6 +100,29 @@ pipeline.start()
 // 从麦克风输入 16kHz 单声道 float32 PCM
 pipeline.pushAudio(samples)
 ```
+
+### 轮次结束检测
+
+VAD 能检测静音，但无法判断一次停顿是否意味着说话者已经表达完毕。Smart Turn v3.2
+是可选的原生音频分类器；它分析当前轮次的最后 8 秒，并在话语未完成时保持轮次开放。
+
+```kotlin
+val modelDir = ModelManager.ensureModels(context, enableSmartTurn = true)
+
+val pipeline = SpeechPipeline(
+    SpeechConfig(
+        modelDir = modelDir,
+        enableSmartTurn = true,
+        turnCompletionThreshold = 0.5f,
+        turnCompletionMaxSilenceSec = 2.0f,
+    )
+)
+```
+
+启用后会额外下载固定版本的 11.1 MB INT8 模型。推理只在 VAD 确认每次停顿后运行
+一次，而不是对每个音频帧运行。若模型否决该停顿，恢复的语音仍属于同一轮次；最大静音
+时长则保证轮次最终会结束。Smart Turn 由 Pipecat/Daily 创建，并以 BSD-2-Clause
+许可证发布。
 
 ### 仅语音活动检测
 

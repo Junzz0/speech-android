@@ -74,7 +74,7 @@ Descarga el [APK firmado](https://github.com/soniqo/speech-android/releases/late
 
 ```kotlin
 dependencies {
-    implementation("audio.soniqo:speech:0.0.19")
+    implementation("audio.soniqo:speech:0.0.20")
 }
 ```
 
@@ -100,6 +100,32 @@ pipeline.start()
 // Alimenta PCM float32 mono 16kHz desde el micrófono
 pipeline.pushAudio(samples)
 ```
+
+### Detección de fin de turno
+
+Un VAD detecta silencio, pero no sabe si una pausa completa la idea del
+hablante. Smart Turn v3.2 es un clasificador opcional basado en audio que
+considera los últimos ocho segundos del turno y mantiene abierto un turno
+incompleto.
+
+```kotlin
+val modelDir = ModelManager.ensureModels(context, enableSmartTurn = true)
+
+val pipeline = SpeechPipeline(
+    SpeechConfig(
+        modelDir = modelDir,
+        enableSmartTurn = true,
+        turnCompletionThreshold = 0.5f,
+        turnCompletionMaxSilenceSec = 2.0f,
+    )
+)
+```
+
+La descarga opcional añade el grafo INT8 fijado de 11,1 MB. La inferencia se
+ejecuta una vez después de cada pausa confirmada por VAD, no en cada frame de
+audio. Si se rechaza la pausa, el habla reanudada continúa en el mismo turno;
+el límite máximo de silencio garantiza un final. Smart Turn fue creado por
+Pipecat/Daily y se distribuye bajo BSD-2-Clause.
 
 ### Solo detección de actividad de voz
 

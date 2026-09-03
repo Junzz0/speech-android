@@ -74,7 +74,7 @@ Kokoro и Supertonic принимают пресет голоса на кажд�
 
 ```kotlin
 dependencies {
-    implementation("audio.soniqo:speech:0.0.19")
+    implementation("audio.soniqo:speech:0.0.20")
 }
 ```
 
@@ -100,6 +100,32 @@ pipeline.start()
 // Подавайте 16 кГц моно float32 PCM с микрофона
 pipeline.pushAudio(samples)
 ```
+
+### Определение конца реплики
+
+VAD распознаёт тишину, но не может понять, завершает ли пауза мысль говорящего.
+Smart Turn v3.2 — необязательный аудиоклассификатор, который анализирует
+последние восемь секунд текущей реплики и оставляет незавершённую реплику
+открытой.
+
+```kotlin
+val modelDir = ModelManager.ensureModels(context, enableSmartTurn = true)
+
+val pipeline = SpeechPipeline(
+    SpeechConfig(
+        modelDir = modelDir,
+        enableSmartTurn = true,
+        turnCompletionThreshold = 0.5f,
+        turnCompletionMaxSilenceSec = 2.0f,
+    )
+)
+```
+
+При включении загружается закреплённый INT8-граф размером 11,1 МБ. Инференс
+выполняется один раз после каждой подтверждённой VAD паузы, а не на каждом
+аудиофрейме. Если пауза отклонена, возобновлённая речь остаётся в той же
+реплике; ограничение максимальной тишины всё равно гарантирует завершение.
+Smart Turn создан Pipecat/Daily и распространяется по BSD-2-Clause.
 
 ### Только детекция речевой активности
 

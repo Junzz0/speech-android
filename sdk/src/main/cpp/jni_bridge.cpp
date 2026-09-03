@@ -7,6 +7,7 @@
 #include <speech_core/models/onnx_canary_stt.h>
 #include <speech_core/models/onnx_nemotron_streaming_stt.h>
 #include <speech_core/models/onnx_pocket_tts.h>
+#include <speech_core/models/onnx_smart_turn.h>
 #include <speech_core/models/parakeet_stt.h>
 #include <speech_core/models/nemotron_multilingual_stt.h>
 #include <speech_core/models/silero_vad.h>
@@ -48,6 +49,7 @@ struct PipelineHandle {
     std::unique_ptr<speech_core::STTInterface> stt;  // Parakeet-EOU, Parakeet TDT, or Nemotron
     std::unique_ptr<speech_core::TTSInterface> tts;  // Kokoro/Pocket (ONNX) or Supertonic (LiteRT)
     std::unique_ptr<speech_core::DeepFilterEnhancer> enhancer;
+    std::unique_ptr<speech_core::OnnxSmartTurn> smart_turn;
     std::unique_ptr<speech_core::VoicePipeline> pipeline;
 
     // Non-owning typed view of `stt` when the Parakeet-EOU streaming model is
@@ -304,7 +306,9 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
     jobjectArray languageHints,
     jobject callback,
     jboolean emitPartialTranscriptions, jfloat partialTranscriptionInterval,
-    jfloat endOfSpeechSilenceSec, jint beamSize)
+    jfloat endOfSpeechSilenceSec, jint beamSize,
+    jboolean enableSmartTurn, jfloat turnCompletionThreshold,
+    jfloat turnCompletionMaxSilenceSec)
 {
     auto dir = jstring_to_string(env, modelDir);
     bool nnapi = useNnapi;
@@ -413,6 +417,14 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
         }
         // TTS — Kokoro (ONNX, 24 kHz) or Supertonic-3 (LiteRT flow-matching, 44.1 kHz, G2P-free).
         h->tts = create_tts(dir, nnapi, ttsModel);
+        if (enableSmartTurn) {
+            // Smart Turn runs once per confirmed VAD pause. Keep it on CPU:
+            // the mobile build's dynamic-int8 graph is small, while NNAPI
+            // partitioning and fallback would add device-specific variance.
+            h->smart_turn = std::make_unique<speech_core::OnnxSmartTurn>(
+                dir + "/smart-turn-v3.2-int8.onnx",
+                /*hardware_acceleration=*/false);
+        }
 
         speech_core::AgentConfig cfg;
         // App-tunable end-of-utterance silence; <=0 falls back to the
@@ -424,6 +436,8 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
         cfg.post_playback_guard = 0.15f;
         cfg.emit_partial_transcriptions = emitPartialTranscriptions;
         cfg.partial_transcription_interval = partialTranscriptionInterval;
+        cfg.turn_completion_threshold = turnCompletionThreshold;
+        cfg.turn_completion_max_silence = turnCompletionMaxSilenceSec;
         cfg.mode = (pipelineMode == MODE_TRANSCRIBE_ONLY)
             ? speech_core::AgentConfig::Mode::TranscribeOnly
             : speech_core::AgentConfig::Mode::Echo;
@@ -438,6 +452,9 @@ Java_audio_soniqo_speech_NativeBridge_nativeCreate(
         h->pipeline = std::make_unique<speech_core::VoicePipeline>(
             *h->stt, *h->tts, /*llm=*/nullptr, *h->vad, cfg,
             [raw](const speech_core::PipelineEvent& e) { dispatch_event(raw, e); });
+        if (h->smart_turn) {
+            h->pipeline->set_turn_completion(h->smart_turn.get());
+        }
 
         auto& engine = OnnxEngine::get();
         if (engine.had_nnapi_fallback()) {

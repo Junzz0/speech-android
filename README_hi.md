@@ -74,7 +74,7 @@ Kokoro और Supertonic दोनों डायरेक्ट सिंथ�
 
 ```kotlin
 dependencies {
-    implementation("audio.soniqo:speech:0.0.19")
+    implementation("audio.soniqo:speech:0.0.20")
 }
 ```
 
@@ -100,6 +100,31 @@ pipeline.start()
 // माइक्रोफ़ोन से 16kHz मोनो float32 PCM फ़ीड करें
 pipeline.pushAudio(samples)
 ```
+
+### टर्न समाप्ति डिटेक्शन
+
+VAD मौन पहचानता है, लेकिन यह नहीं बता सकता कि कोई विराम वक्ता की बात पूरी
+करता है या नहीं। Smart Turn v3.2 एक वैकल्पिक ऑडियो-आधारित क्लासिफ़ायर है जो
+मौजूदा टर्न के अंतिम आठ सेकंड देखकर अधूरे टर्न को खुला रखता है।
+
+```kotlin
+val modelDir = ModelManager.ensureModels(context, enableSmartTurn = true)
+
+val pipeline = SpeechPipeline(
+    SpeechConfig(
+        modelDir = modelDir,
+        enableSmartTurn = true,
+        turnCompletionThreshold = 0.5f,
+        turnCompletionMaxSilenceSec = 2.0f,
+    )
+)
+```
+
+यह वैकल्पिक डाउनलोड स्थिर संस्करण वाला 11.1 MB INT8 ग्राफ़ जोड़ता है। हर
+ऑडियो फ़्रेम पर नहीं, बल्कि VAD द्वारा पुष्टि किए गए प्रत्येक विराम के बाद एक
+बार इनफ़रेंस चलता है। विराम अस्वीकार होने पर दोबारा शुरू हुई आवाज़ उसी टर्न में
+रहती है; अधिकतम मौन सीमा अंत सुनिश्चित करती है। Smart Turn को Pipecat/Daily ने
+बनाया है और यह BSD-2-Clause के तहत वितरित है।
 
 ### केवल वॉइस ऐक्टिविटी डिटेक्शन
 

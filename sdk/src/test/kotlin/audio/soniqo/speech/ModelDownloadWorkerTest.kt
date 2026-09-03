@@ -46,7 +46,7 @@ class ModelDownloadWorkerTest {
     @Test
     fun `success returns model dir in output data`() = runBlocking {
         coEvery {
-            ModelManager.ensureModels(any(), any(), any(), any(), any(), any())
+            ModelManager.ensureModels(any(), any(), any(), any(), any(), any(), any(), any())
         } returns "/fake/model/dir"
 
         val worker = TestListenableWorkerBuilder<ModelDownloadWorker>(context)
@@ -65,7 +65,7 @@ class ModelDownloadWorkerTest {
         // Transient network/disk failures go back to WorkManager so it
         // reschedules with exponential backoff.
         coEvery {
-            ModelManager.ensureModels(any(), any(), any(), any(), any(), any())
+            ModelManager.ensureModels(any(), any(), any(), any(), any(), any(), any(), any())
         } throws IOException("network down")
 
         val worker = TestListenableWorkerBuilder<ModelDownloadWorker>(context).build()
@@ -79,7 +79,7 @@ class ModelDownloadWorkerTest {
         // Non-IO exceptions are not transient — Failure carries the message so
         // the host activity can surface it.
         coEvery {
-            ModelManager.ensureModels(any(), any(), any(), any(), any(), any())
+            ModelManager.ensureModels(any(), any(), any(), any(), any(), any(), any(), any())
         } throws IllegalStateException("models corrupt")
 
         val worker = TestListenableWorkerBuilder<ModelDownloadWorker>(context).build()
@@ -93,7 +93,7 @@ class ModelDownloadWorkerTest {
     @Test
     fun `missing or invalid inputs fall back to INT8 and short-turn Kokoro`() = runBlocking {
         coEvery {
-            ModelManager.ensureModels(any(), any(), any(), any(), any(), any())
+            ModelManager.ensureModels(any(), any(), any(), any(), any(), any(), any(), any())
         } returns "/fake"
 
         TestListenableWorkerBuilder<ModelDownloadWorker>(context).build().doWork()
@@ -110,6 +110,8 @@ class ModelDownloadWorkerTest {
                 any(),
                 TtsModel.KOKORO_SHORT_TURN,
                 any(),
+                false,
+                false,
             )
         }
     }
@@ -117,7 +119,7 @@ class ModelDownloadWorkerTest {
     @Test
     fun `model inputs are passed to ModelManager`() = runBlocking {
         coEvery {
-            ModelManager.ensureModels(any(), any(), any(), any(), any(), any())
+            ModelManager.ensureModels(any(), any(), any(), any(), any(), any(), any(), any())
         } returns "/fake"
 
         val worker = TestListenableWorkerBuilder<ModelDownloadWorker>(context)
@@ -139,6 +141,27 @@ class ModelDownloadWorkerTest {
                 SttBackend.ONNX,
                 TtsModel.SUPERTONIC,
                 any(),
+                false,
+                false,
+            )
+        }
+    }
+
+    @Test
+    fun `Smart Turn input downloads the optional model`() = runBlocking {
+        coEvery {
+            ModelManager.ensureModels(any(), any(), any(), any(), any(), any(), any(), any())
+        } returns "/fake"
+
+        val worker = TestListenableWorkerBuilder<ModelDownloadWorker>(context)
+            .setInputData(workDataOf(ModelDownloadWorker.KEY_ENABLE_SMART_TURN to true))
+            .build()
+
+        worker.doWork()
+
+        coVerify(exactly = 1) {
+            ModelManager.ensureModels(
+                any(), any(), any(), any(), any(), any(), any(), true,
             )
         }
     }
@@ -146,7 +169,7 @@ class ModelDownloadWorkerTest {
     @Test
     fun `control lora input downloads selected llm profile`() = runBlocking {
         coEvery {
-            ModelManager.ensureModels(any(), any(), any(), any(), any(), any())
+            ModelManager.ensureModels(any(), any(), any(), any(), any(), any(), any(), any())
         } returns "/fake"
         coEvery {
             ModelManager.ensureLlmModels(any(), any(), any())
@@ -180,6 +203,7 @@ class ModelDownloadWorkerTest {
             ttsModel = TtsModel.KOKORO,
             includeLlm = true,
             llmModel = LlmModel.FUNCTIONGEMMA_CONTROL_LORA,
+            enableSmartTurn = true,
         )
 
         assertEquals(
@@ -199,6 +223,7 @@ class ModelDownloadWorkerTest {
             req.workSpec.input.getString(ModelDownloadWorker.KEY_TTS_MODEL),
         )
         assertTrue(req.workSpec.input.getBoolean(ModelDownloadWorker.KEY_INCLUDE_LLM, false))
+        assertTrue(req.workSpec.input.getBoolean(ModelDownloadWorker.KEY_ENABLE_SMART_TURN, false))
         assertEquals(
             "FUNCTIONGEMMA_CONTROL_LORA",
             req.workSpec.input.getString(ModelDownloadWorker.KEY_LLM_MODEL),
@@ -234,6 +259,10 @@ class ModelDownloadWorkerTest {
         assertNotEquals(
             ModelDownloadWorker.UNIQUE_NAME,
             ModelDownloadWorker.uniqueName(sttModel = SttModel.PARAKEET),
+        )
+        assertNotEquals(
+            ModelDownloadWorker.UNIQUE_NAME,
+            ModelDownloadWorker.uniqueName(enableSmartTurn = true),
         )
         assertNotEquals(
             ModelDownloadWorker.uniqueName(sttModel = SttModel.PARAKEET),
