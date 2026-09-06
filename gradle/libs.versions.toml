@@ -1,5 +1,5 @@
 [versions]
-androidGradlePlugin = "8.13.2"
+androidGradlePlugin = "9.3.2"
 androidxActivity = "1.9.3"
 androidxAnnotation = "1.8.2"
 androidxAppCompat = "1.7.0"
@@ -11,7 +11,7 @@ androidxTestExt = "1.2.1"
 androidxTestRunner = "1.6.2"
 androidxWork = "2.11.2"
 junit4 = "4.13.2"
-kotlin = "2.2.21"
+kotlin = "2.4.10"
 kotlinxCoroutines = "1.11.0"
 litertlm = "0.16.0"
 material = "1.12.0"
@@ -50,5 +50,4 @@ robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }
 android-library = { id = "com.android.library", version.ref = "androidGradlePlugin" }
 compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "mavenPublish" }
