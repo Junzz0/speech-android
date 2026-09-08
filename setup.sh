@@ -116,6 +116,68 @@ else
     echo "LiteRT already installed"
 fi
 
+# --- CMake ---
+
+# The native build pins an exact CMake in sdk/build.gradle.kts. AGP downloads a
+# missing platform or build-tools on its own, but never CMake: an absent version
+# fails configuration with "[CXX1300] CMake '<version>' was not found in SDK,
+# PATH, or by cmake.dir property". Install it here so a fresh checkout and CI
+# both get it from the one place that already bootstraps this project.
+
+CMAKE_VERSION="$(sed -n 's/^[[:space:]]*version = "\([0-9.]*\)".*/\1/p' \
+    "${ROOT}/sdk/build.gradle.kts" | head -1)"
+
+if [ -z "${CMAKE_VERSION}" ]; then
+    echo "WARNING: could not read the CMake version from sdk/build.gradle.kts; skipping."
+else
+    SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+    if [ -z "${SDK_ROOT}" ] && [ -f "${ROOT}/local.properties" ]; then
+        SDK_ROOT="$(sed -n 's/^sdk\.dir=//p' "${ROOT}/local.properties" | head -1)"
+    fi
+
+    if [ -n "${SDK_ROOT}" ] && [ -d "${SDK_ROOT}/cmake/${CMAKE_VERSION}" ]; then
+        echo "CMake ${CMAKE_VERSION} already installed"
+    else
+        SDKMANAGER=""
+        for candidate in \
+            "${SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" \
+            "${SDK_ROOT}/cmdline-tools/bin/sdkmanager" \
+            "${SDK_ROOT}/tools/bin/sdkmanager"; do
+            if [ -n "${SDK_ROOT}" ] && [ -x "${candidate}" ]; then
+                SDKMANAGER="${candidate}"
+                break
+            fi
+        done
+        if [ -z "${SDKMANAGER}" ] && command -v sdkmanager >/dev/null 2>&1; then
+            SDKMANAGER="$(command -v sdkmanager)"
+        fi
+
+        if [ -z "${SDKMANAGER}" ]; then
+            echo "WARNING: sdkmanager not found. Install CMake ${CMAKE_VERSION} yourself,"
+            echo "         or the native build will fail with CXX1300."
+        else
+            echo "Installing CMake ${CMAKE_VERSION}..."
+            # `yes` feeds the license prompt on a runner that has not accepted it.
+            # It is killed by SIGPIPE once sdkmanager stops reading, so read the
+            # installer's own status out of PIPESTATUS rather than the pipeline's.
+            set +e
+            if [ -n "${SDK_ROOT}" ]; then
+                yes | "${SDKMANAGER}" --sdk_root="${SDK_ROOT}" "cmake;${CMAKE_VERSION}" >/dev/null
+                CMAKE_STATUS=${PIPESTATUS[1]}
+            else
+                yes | "${SDKMANAGER}" "cmake;${CMAKE_VERSION}" >/dev/null
+                CMAKE_STATUS=${PIPESTATUS[1]}
+            fi
+            set -e
+            if [ "${CMAKE_STATUS}" -ne 0 ]; then
+                echo "ERROR: sdkmanager could not install CMake ${CMAKE_VERSION} (exit ${CMAKE_STATUS})."
+                exit 1
+            fi
+            echo "CMake ${CMAKE_VERSION} installed"
+        fi
+    fi
+fi
+
 echo ""
 echo "Done. Open the project in Android Studio or run:"
 echo "  ./gradlew :app:assembleDebug"
