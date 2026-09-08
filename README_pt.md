@@ -74,7 +74,7 @@ Baixe o [APK assinado](https://github.com/soniqo/speech-android/releases/latest/
 
 ```kotlin
 dependencies {
-    implementation("audio.soniqo:speech:0.0.20")
+    implementation("audio.soniqo:speech:0.0.21")
 }
 ```
 
