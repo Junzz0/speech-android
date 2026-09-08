@@ -53,8 +53,13 @@ jobs:
       - name: Build SDK
         run: ./gradlew :sdk:assembleRelease
 
+      # `test` rather than a variant-specific task: AGP 9 only creates a unit
+      # test component for the debug variant, so `testReleaseUnitTest` no
+      # longer exists and a tag build died here after the SDK had been built.
+      # CI runs `:sdk:test` too, so the release path can no longer name a task
+      # that the pull request gate never exercises.
       - name: Run unit tests
-        run: ./gradlew :sdk:testReleaseUnitTest :control-demo:testDebugUnitTest
+        run: ./gradlew :sdk:test :control-demo:testDebugUnitTest
 
       - name: Decode signing keystore
         run: echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.keystore
