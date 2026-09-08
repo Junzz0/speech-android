@@ -850,7 +850,7 @@ object ModelManager {
                     throw IOException("HTTP $code for $url")
                 }
 
-                val body = response.body ?: throw IOException("Empty response for $url")
+                val body = response.body
 
                 // Validate Content-Length when starting fresh
                 val contentLength = body.contentLength()
