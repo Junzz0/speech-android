@@ -35,6 +35,8 @@
 | [Pocket TTS 100M](https://huggingface.co/soniqo/Pocket-TTS-100M-ONNX-INT8) | ストリーミング音声合成(任意、固定 Alba 音声) | ~126 MB | 未計測 | 英語 |
 | [Supertonic-3](https://soniqo.audio/ja/guides/supertonic) | テキスト読み上げ(LiteRT、flow-matching、G2P-free、44.1 kHz) | [~380 MB](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 MB | 31 |
 | [Silero VAD v5](https://soniqo.audio/ja/guides/vad/android) | 音声活動検出 | [2 MB](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | <10 MB | 任意 |
+| [Sortformer 4 話者](https://huggingface.co/soniqo/Sortformer-Diarization-4spk-ONNX) | ストリーミング話者分離(任意) | [475 MB](https://huggingface.co/soniqo/Sortformer-Diarization-4spk-ONNX) | 未計測 | 任意 |
+| [ReDimNet2-B6](https://huggingface.co/soniqo/ReDimNet2-B6-ONNX-FP32) | 話者埋め込み(任意) | [51 MB](https://huggingface.co/soniqo/ReDimNet2-B6-ONNX-FP32) | 未計測 | 任意 |
 | [DeepFilterNet3](https://soniqo.audio/ja/guides/denoise/android) | ノイズキャンセリング | [~8 MB](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | 既定では未ロード | 任意 |
 | [FunctionGemma 270M](https://soniqo.audio/ja/guides/function-calls) | オンデバイス LLM — 構造化関数 / ツール呼び出し | [283 MB](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | アプリのランタイム次第 | EN チューニング |
 
@@ -159,6 +161,35 @@ detector.flush()
 取りこぼさないプリスピーチバッファです。このパスは `ModelManager.ensureVadModels()`
 と専用の `models_vad/` キャッシュを使うため、STT/TTS のバンドルを取得することは
 ありません。
+
+### 会議文字起こしの構成要素
+
+録音と区間分割を自前で行うアプリ(会議レコーダーやメモアプリなど)は、パイプラインなしで認識器・話者分離モデル・話者エンコーダーを個別に読み込めます。それぞれ専用のダウンロードとキャッシュディレクトリを持ち、どれもプロダクト上の判断はしません。文字起こしはテキストを、話者分離はフレームごとの話者確率を、エンコーダーは 192 次元の声のベクトルを返します。しきい値、ターン、話者ラベル、声の照合はアプリ側に残ります。
+
+```kotlin
+// 任意: ユーザーが選んだ、Hugging Face と同じ構成のミラー。
+ModelManager.endpoint = "https://hf-mirror.com"
+
+val transcriber = StreamingTranscriber(
+    TranscriberConfig(modelDir = ModelManager.ensureTranscriberModels(context))
+)
+transcriber.beginStream()
+transcriber.pushAudio(samples)            // 16 kHz モノラル float32。ここまでのテキスト
+val text = transcriber.endStream().text
+
+val diarizer = SpeakerDiarizer(
+    DiarizerConfig(modelDir = ModelManager.ensureDiarizerModels(context))
+)
+val frames = diarizer.pushAudio(samples)  // [フレーム数 x diarizer.speakers]。多くの場合は空
+val tail = diarizer.endStream()           // 録音の終了時
+
+val embedder = SpeakerEmbedder(
+    SpeakerEmbedderConfig(modelDir = ModelManager.ensureSpeakerEmbeddingModels(context))
+)
+val voice = embedder.embed(speech)        // 2 秒以上。FloatArray(192)
+```
+
+`TranscriberConfig.language` の既定値は `"auto"` で、speech-swift と同じく Nemotron の自動言語プロンプトを使います。`"en-US"`、`"pt_BR"`、単独の `"fr"` などを指定すると言語を固定します。文字起こしには、各トークンが出力されたエンコーダーフレームに基づく単語ごとのタイミング(`beginStream` からの秒数)が含まれます。Sortformer は録音ごとに 1 つのストリームで、公開エクスポートが 1 回の呼び出しで 27.2 秒をデコードするため、結果は音声より約 30 秒遅れます。`ModelDownloadWorker.enqueue(context, includePipeline = false, includeTranscriber = true, includeDiarizer = true, includeSpeakerEmbedding = true)` で 3 つのセットをバックグラウンドで取得できます。
 
 ## ソースからビルド
 

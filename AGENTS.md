@@ -48,7 +48,8 @@ Download retry / resume / timeout / validation / edge cases.
 ```
 
 Suites: `SileroVadTest`, `ParakeetSttTest`, `KokoroTtsTest`,
-`KokoroMultilingualTest`, `PipelineE2ETest`, `BargeInTest`, `DeepFilterTest`.
+`KokoroMultilingualTest`, `PipelineE2ETest`, `BargeInTest`, `DeepFilterTest`,
+`StreamingTranscriberTest`, `SpeakerDiarizerTest`, `SpeakerEmbedderTest`.
 
 Models (~1.2GB) download on first run via `ModelManager.ensureModels()`.
 Subsequent runs use the device-side cache.
@@ -72,6 +73,9 @@ org. INT8 quantized by default.
 - `soniqo/Kokoro-82M-ONNX` — TTS + phonemizer dicts + voice embeddings
 - `soniqo/Pocket-TTS-100M-ONNX-INT8` — streaming English TTS, fixed Alba voice
 - `soniqo/DeepFilterNet3-ONNX` — noise enhancer
+- `soniqo/Nemotron-3.5-ASR-Streaming-Multilingual-0.6B-LiteRT-INT8` — multilingual streaming STT, in the pipeline or as `StreamingTranscriber`
+- `soniqo/Sortformer-Diarization-4spk-ONNX` — streaming speaker diarization (`SpeakerDiarizer`)
+- `soniqo/ReDimNet2-B6-ONNX-FP32` — speaker embeddings (`SpeakerEmbedder`)
 
 `ModelManager.kt` handles download and caching. See speech-core's
 [`docs/models.md`](https://github.com/soniqo/speech-core/blob/main/docs/models.md)
@@ -84,7 +88,8 @@ for the full model-file inventory.
 - `sdk/src/main/kotlin/audio/soniqo/speech/SpeechPipeline.kt` — main public Kotlin API.
 - `sdk/src/main/kotlin/audio/soniqo/speech/NativeBridge.kt` — JNI surface (must stay in lockstep with `jni_bridge.cpp`).
 - `sdk/src/main/kotlin/audio/soniqo/speech/VadDetector.kt` — VAD-only public API (Silero + speech-core `TurnDetector`, no pipeline). The listening counterpart to `SpeechSynthesizer`.
-- `sdk/src/main/kotlin/audio/soniqo/speech/ModelManager.kt` — model download + caching. Three profiles: full pipeline (`models/`), TTS-only (`models_tts/`), VAD-only (`models_vad/`).
+- `sdk/src/main/kotlin/audio/soniqo/speech/{StreamingTranscriber,SpeakerDiarizer,SpeakerEmbedder}.kt` — standalone meeting-transcription models with no pipeline: a Nemotron multilingual stream, streaming Sortformer and ReDimNet2-B6. They return text, per-frame probabilities and vectors only; thresholds, turns, speaker labels and voice matching belong to the app, not this SDK.
+- `sdk/src/main/kotlin/audio/soniqo/speech/ModelManager.kt` — model download + caching. Profiles: full pipeline (`models/`), TTS-only (`models_tts/`), VAD-only (`models_vad/`), plus the standalone `models_transcriber-*`, `models_diarizer/` and `models_speaker_embedding/` sets. `ModelManager.endpoint` overrides the download origin for every set, for a mirror the user explicitly chose.
 
 Native code that used to live here (`models/*.{cpp,h}`, `audio/{fft,mel,stft}.cpp`,
 `util/json.h`, `onnx_engine.h`) is now under speech-core. Modify it via a

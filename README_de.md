@@ -35,6 +35,8 @@ Dieses Repo ist das **Android-Packaging**: Kotlin-SDK, JNI-Bridge, Demo-App. Die
 | [Pocket TTS 100M](https://huggingface.co/soniqo/Pocket-TTS-100M-ONNX-INT8) | Streaming-Text-to-Speech (optional, feste Alba-Stimme) | ~126 MB | noch nicht gemessen | Englisch |
 | [Supertonic-3](https://soniqo.audio/de/guides/supertonic) | Text-to-Speech (LiteRT, Flow-Matching, G2P-frei, 44,1 kHz) | [~380 MB](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 MB | 31 |
 | [Silero VAD v5](https://soniqo.audio/de/guides/vad/android) | Sprachaktivitätserkennung | [2 MB](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | <10 MB | Beliebig |
+| [Sortformer 4 Sprecher](https://huggingface.co/soniqo/Sortformer-Diarization-4spk-ONNX) | Streaming-Sprecherdiarisierung (optional) | [475 MB](https://huggingface.co/soniqo/Sortformer-Diarization-4spk-ONNX) | noch nicht gemessen | Beliebig |
+| [ReDimNet2-B6](https://huggingface.co/soniqo/ReDimNet2-B6-ONNX-FP32) | Sprecher-Embeddings (optional) | [51 MB](https://huggingface.co/soniqo/ReDimNet2-B6-ONNX-FP32) | noch nicht gemessen | Beliebig |
 | [DeepFilterNet3](https://soniqo.audio/de/guides/denoise/android) | Rauschunterdrückung | [~8 MB](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | standardmäßig nicht geladen | Beliebig |
 | [FunctionGemma 270M](https://soniqo.audio/de/guides/function-calls) | On-Device-LLM — strukturierte Funktions-/Tool-Aufrufe | [283 MB](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | abhängig vom App-Runtime | EN-getunt |
 
@@ -160,6 +162,35 @@ Onset- und Offset-Schwellen, minimale Sprechdauer, Stille am Sprechende und den
 Pre-Speech-Puffer, der die erste Silbe erhält. Dieser Pfad nutzt
 `ModelManager.ensureVadModels()` und einen eigenen `models_vad/`-Cache und lädt
 daher nie die STT/TTS-Bundles.
+
+### Bausteine für Meeting-Transkription
+
+Apps, die Aufnahme und Segmentierung selbst übernehmen – etwa ein Meeting-Rekorder oder eine Notiz-App –, können Erkenner, Diarisierer und Sprecher-Encoder einzeln laden, ohne die Pipeline. Jedes Modell hat einen eigenen Download und ein eigenes Cache-Verzeichnis, und keines trifft Produktentscheidungen: Der Transkribierer liefert Text, der Diarisierer Sprecherwahrscheinlichkeiten pro Frame und der Encoder einen 192-dimensionalen Stimmvektor. Schwellen, Sprecherwechsel, Sprecherlabels und der Stimmabgleich bleiben in der App.
+
+```kotlin
+// Optional: ein vom Nutzer gewählter Mirror mit der Struktur von Hugging Face.
+ModelManager.endpoint = "https://hf-mirror.com"
+
+val transcriber = StreamingTranscriber(
+    TranscriberConfig(modelDir = ModelManager.ensureTranscriberModels(context))
+)
+transcriber.beginStream()
+transcriber.pushAudio(samples)            // 16 kHz Mono float32; bisheriger Text
+val text = transcriber.endStream().text
+
+val diarizer = SpeakerDiarizer(
+    DiarizerConfig(modelDir = ModelManager.ensureDiarizerModels(context))
+)
+val frames = diarizer.pushAudio(samples)  // [Frames x diarizer.speakers], oft leer
+val tail = diarizer.endStream()           // am Ende der Aufnahme
+
+val embedder = SpeakerEmbedder(
+    SpeakerEmbedderConfig(modelDir = ModelManager.ensureSpeakerEmbeddingModels(context))
+)
+val voice = embedder.embed(speech)        // mindestens 2 s; FloatArray(192)
+```
+
+`TranscriberConfig.language` ist standardmäßig `"auto"`, der automatische Sprach-Prompt von Nemotron wie in speech-swift; `"en-US"`, `"pt_BR"` oder nur `"fr"` legen eine Sprache fest. Jedes Transkript enthält Wortzeitstempel in Sekunden ab `beginStream`, abgeleitet vom Encoder-Frame, in dem jedes Token ausgegeben wurde. Sortformer ist ein Stream pro Aufnahme und antwortet etwa 30 Sekunden hinter dem Audio, weil der veröffentlichte Export 27,2 Sekunden pro Aufruf dekodiert. `ModelDownloadWorker.enqueue(context, includePipeline = false, includeTranscriber = true, includeDiarizer = true, includeSpeakerEmbedding = true)` lädt die drei Sets im Hintergrund.
 
 ## Aus dem Quellcode bauen
 

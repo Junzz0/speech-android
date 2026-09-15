@@ -35,6 +35,8 @@
 | [Pocket TTS 100M](https://huggingface.co/soniqo/Pocket-TTS-100M-ONNX-INT8) | 流式文本转语音(可选,固定 Alba 音色) | ~126 MB | 尚未测量 | 英语 |
 | [Supertonic-3](https://soniqo.audio/zh/guides/supertonic) | 文本转语音(LiteRT、流匹配、免 G2P、44.1 kHz) | [~380 MB](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 MB | 31 |
 | [Silero VAD v5](https://soniqo.audio/zh/guides/vad/android) | 语音活动检测 | [2 MB](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | <10 MB | 任意 |
+| [Sortformer 4 说话人](https://huggingface.co/soniqo/Sortformer-Diarization-4spk-ONNX) | 流式说话人分离(可选) | [475 MB](https://huggingface.co/soniqo/Sortformer-Diarization-4spk-ONNX) | 尚未测量 | 任意 |
+| [ReDimNet2-B6](https://huggingface.co/soniqo/ReDimNet2-B6-ONNX-FP32) | 说话人嵌入(可选) | [51 MB](https://huggingface.co/soniqo/ReDimNet2-B6-ONNX-FP32) | 尚未测量 | 任意 |
 | [DeepFilterNet3](https://soniqo.audio/zh/guides/denoise/android) | 噪声消除 | [~8 MB](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | 默认不加载 | 任意 |
 | [FunctionGemma 270M](https://soniqo.audio/zh/guides/function-calls) | 端侧 LLM — 结构化函数 / 工具调用 | [283 MB](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | 取决于应用运行时 | EN 调优 |
 
@@ -155,6 +157,35 @@ detector.flush()
 语音结束静音时长,以及保留首个音节的前置语音缓冲。该路径使用
 `ModelManager.ensureVadModels()` 和独立的 `models_vad/` 缓存,因此永远不会拉取
 STT/TTS 模型包。
+
+### 会议转写组件
+
+自行负责采集和分段的应用(例如会议录音或记笔记应用)可以脱离管线,单独加载识别器、说话人分离模型和说话人编码器。每个模型都有自己的下载和缓存目录,也都不替应用做产品决策:转写器返回文本,分离模型返回逐帧的说话人概率,编码器返回 192 维声纹向量。阈值、轮次、说话人标签和声纹匹配都留给应用。
+
+```kotlin
+// 可选:用户自行选择的、采用 Hugging Face 目录结构的镜像。
+ModelManager.endpoint = "https://hf-mirror.com"
+
+val transcriber = StreamingTranscriber(
+    TranscriberConfig(modelDir = ModelManager.ensureTranscriberModels(context))
+)
+transcriber.beginStream()
+transcriber.pushAudio(samples)            // 16 kHz 单声道 float32;返回目前为止的文本
+val text = transcriber.endStream().text
+
+val diarizer = SpeakerDiarizer(
+    DiarizerConfig(modelDir = ModelManager.ensureDiarizerModels(context))
+)
+val frames = diarizer.pushAudio(samples)  // [帧数 x diarizer.speakers],经常为空
+val tail = diarizer.endStream()           // 录音结束时
+
+val embedder = SpeakerEmbedder(
+    SpeakerEmbedderConfig(modelDir = ModelManager.ensureSpeakerEmbeddingModels(context))
+)
+val voice = embedder.embed(speech)        // 至少 2 秒;FloatArray(192)
+```
+
+`TranscriberConfig.language` 默认为 `"auto"`,即 Nemotron 的自动语言提示,与 speech-swift 相同;`"en-US"`、`"pt_BR"` 或单独的 `"fr"` 会固定一种语言。每份转写结果都带有词级时间,以 `beginStream` 起算的秒数表示,取自每个词元被输出时的编码器帧。Sortformer 每段录音使用一个流,结果比音频晚约 30 秒,因为已发布的导出模型每次调用解码 27.2 秒。`ModelDownloadWorker.enqueue(context, includePipeline = false, includeTranscriber = true, includeDiarizer = true, includeSpeakerEmbedding = true)` 会在后台下载这三组模型。
 
 ## 从源代码构建
 

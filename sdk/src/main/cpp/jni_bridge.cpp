@@ -7,7 +7,9 @@
 #include <speech_core/models/onnx_canary_stt.h>
 #include <speech_core/models/onnx_nemotron_streaming_stt.h>
 #include <speech_core/models/onnx_pocket_tts.h>
+#include <speech_core/models/onnx_redimnet_speaker_embedding.h>
 #include <speech_core/models/onnx_smart_turn.h>
+#include <speech_core/models/onnx_sortformer_diarizer.h>
 #include <speech_core/models/parakeet_stt.h>
 #include <speech_core/models/nemotron_multilingual_stt.h>
 #include <speech_core/models/silero_vad.h>
@@ -21,6 +23,7 @@
 #include <speech_core/pipeline/voice_pipeline.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <mutex>
@@ -93,6 +96,47 @@ struct VadHandle {
     JavaVM* jvm = nullptr;
     jobject callback = nullptr;
     jmethodID on_turn_mid = nullptr;
+};
+
+// ---------------------------------------------------------------------------
+// Meeting-transcription building blocks
+//
+// Three models with no VoicePipeline around them, for an app that runs its
+// own capture, segmentation and speaker policy: a Nemotron multilingual
+// stream, a streaming Sortformer diarizer and a ReDimNet speaker encoder. None
+// of the wrapped models is thread-safe, so each handle serializes its model
+// behind one mutex, as VadHandle does.
+// ---------------------------------------------------------------------------
+
+struct TranscriberHandle {
+    std::unique_ptr<speech_core::STTInterface> stt;
+    // Typed views of `stt`: set_language() is model-specific, not part of
+    // STTInterface. Exactly one is set.
+    speech_core::NemotronMultilingualStt* onnx = nullptr;
+#ifdef SPEECH_ANDROID_WITH_LITERT
+    speech_core::LiteRTNemotronMultilingualStt* litert = nullptr;
+#endif
+    // push_chunk() returns only the text its own call decoded, and the Kotlin
+    // API returns the whole open stream, so the running text is kept here.
+    std::string text;
+    float last_confidence = 0.0f;
+    std::vector<speech_core::TimedWord> words;
+    // end_stream() on a closed stream would return the previous stream's text
+    // again, so the bridge tracks whether one is open.
+    bool open = false;
+    std::mutex mutex;
+};
+
+// Sortformer is one stream per recording: its arrival-order speaker cache is
+// what keeps a column meaning the same voice for the whole session.
+struct DiarizerHandle {
+    std::unique_ptr<speech_core::OnnxSortformerDiarizer> diarizer;
+    std::mutex mutex;
+};
+
+struct EmbedderHandle {
+    std::unique_ptr<speech_core::OnnxReDimNetSpeakerEmbedding> embedder;
+    std::mutex mutex;
 };
 
 static constexpr int STT_PARAKEET = 0;
@@ -293,6 +337,90 @@ static std::vector<std::string> jstring_array_to_vector(JNIEnv* env, jobjectArra
         if (item) env->DeleteLocalRef(item);
     }
     return out;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers for the standalone models
+// ---------------------------------------------------------------------------
+
+// A C++ exception must never unwind through a JNI frame. Bad arguments reach
+// Kotlin as IllegalArgumentException, every other failure as RuntimeException,
+// both carrying the native reason.
+static void throw_java(JNIEnv* env, const char* class_name, const std::string& message) {
+    if (env->ExceptionCheck()) return;
+    jclass cls = env->FindClass(class_name);
+    if (cls) env->ThrowNew(cls, message.c_str());
+}
+
+static void throw_native_failure(JNIEnv* env, const char* what, const std::exception& e) {
+    const std::string message = std::string(what) + ": " + e.what();
+    LOGE("%s", message.c_str());
+    if (dynamic_cast<const std::invalid_argument*>(&e) != nullptr) {
+        throw_java(env, "java/lang/IllegalArgumentException", message);
+    } else {
+        throw_java(env, "java/lang/RuntimeException", message);
+    }
+}
+
+// Model text is UTF-8 and may hold characters outside the BMP, which
+// NewStringUTF's modified UTF-8 cannot carry. Decoding through
+// String(byte[], charset) also turns a malformed byte into U+FFFD instead of
+// aborting the VM.
+static jstring utf8_string(JNIEnv* env, const std::string& text) {
+    jbyteArray bytes = env->NewByteArray(static_cast<jsize>(text.size()));
+    if (!bytes) return nullptr;
+    if (!text.empty()) {
+        env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(text.size()),
+            reinterpret_cast<const jbyte*>(text.data()));
+    }
+    jclass string_class = env->FindClass("java/lang/String");
+    jmethodID ctor = env->GetMethodID(string_class, "<init>", "([BLjava/lang/String;)V");
+    jstring charset = env->NewStringUTF("UTF-8");
+    auto result = static_cast<jstring>(env->NewObject(string_class, ctor, bytes, charset));
+    env->DeleteLocalRef(charset);
+    env->DeleteLocalRef(bytes);
+    env->DeleteLocalRef(string_class);
+    return result;
+}
+
+static jfloatArray float_array(JNIEnv* env, const std::vector<float>& values) {
+    jfloatArray array = env->NewFloatArray(static_cast<jsize>(values.size()));
+    if (array && !values.empty()) {
+        env->SetFloatArrayRegion(array, 0, static_cast<jsize>(values.size()), values.data());
+    }
+    return array;
+}
+
+// Resolve a locale the way speech-swift's NemotronLanguages.slot(for:) does:
+// the tag as written, then with `_` read as `-`, then its language prefix as
+// written and lowercased. "auto" or an empty tag selects the bundle's
+// automatic prompt slot ("auto" in languages.json). A tag that resolves to
+// nothing leaves the model on the automatic slot and returns false.
+template <typename Model>
+static bool resolve_language(Model& model, const std::string& requested) {
+    if (requested.empty() || requested == "auto") {
+        model.set_language("auto");
+        return true;
+    }
+    if (model.set_language(requested)) return true;
+    std::string normalized = requested;
+    std::replace(normalized.begin(), normalized.end(), '_', '-');
+    if (model.set_language(normalized)) return true;
+    const std::string prefix = normalized.substr(0, normalized.find('-'));
+    if (!prefix.empty() && model.set_language(prefix)) return true;
+    std::string lower = prefix;
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (!lower.empty() && model.set_language(lower)) return true;
+    model.set_language("auto");
+    return false;
+}
+
+static bool resolve_transcriber_language(TranscriberHandle& h, const std::string& requested) {
+#ifdef SPEECH_ANDROID_WITH_LITERT
+    if (h.litert) return resolve_language(*h.litert, requested);
+#endif
+    return h.onnx != nullptr && resolve_language(*h.onnx, requested);
 }
 
 extern "C" {
@@ -954,6 +1082,414 @@ Java_audio_soniqo_speech_NativeBridge_nativeVadInSpeech(
     if (!h || !h->detector) return JNI_FALSE;
     std::lock_guard<std::mutex> lock(h->mutex);
     return h->detector->in_speech() ? JNI_TRUE : JNI_FALSE;
+}
+
+// ---------------------------------------------------------------------------
+// StreamingTranscriber — Nemotron multilingual, no VAD and no pipeline.
+// Must stay in lockstep with the matching section of NativeBridge.kt.
+// ---------------------------------------------------------------------------
+
+JNIEXPORT jlong JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeCreateTranscriber(
+    JNIEnv* env, jobject /*thiz*/,
+    jstring modelDir, jint sttBackend, jboolean hardwareAcceleration,
+    jstring language)
+{
+    const auto dir = jstring_to_string(env, modelDir);
+    const auto lang = jstring_to_string(env, language);
+    const bool hw = hardwareAcceleration == JNI_TRUE;
+
+    auto h = std::make_unique<TranscriberHandle>();
+    try {
+        if (sttBackend == BACKEND_LITERT) {
+#ifdef SPEECH_ANDROID_WITH_LITERT
+            auto m = std::make_unique<speech_core::LiteRTNemotronMultilingualStt>(
+                dir + "/nemotron-multilingual-encoder.tflite",
+                dir + "/nemotron-multilingual-decoder.tflite",
+                dir + "/nemotron-multilingual-joint.tflite",
+                dir + "/vocab.json", dir + "/languages.json", hw);
+            h->litert = m.get();
+            h->stt = std::move(m);
+#else
+            throw std::runtime_error("LiteRT STT backend not built into this SDK");
+#endif
+        } else {
+            auto m = std::make_unique<speech_core::NemotronMultilingualStt>(
+                dir + "/encoder.onnx", dir + "/decoder.onnx", dir + "/joint.onnx",
+                dir + "/vocab.json", dir + "/languages.json", hw);
+            h->onnx = m.get();
+            h->stt = std::move(m);
+        }
+        if (!resolve_transcriber_language(*h, lang)) {
+            throw std::invalid_argument(
+                "Nemotron has no language prompt for '" + lang +
+                "'; use \"auto\" or a locale from languages.json "
+                "(Chinese: zh-CN or zh-TW)");
+        }
+        LOGI("Streaming transcriber created (backend=%d, language=%s)",
+             sttBackend, lang.c_str());
+    } catch (const std::exception& e) {
+        throw_native_failure(env, "Native transcriber failed", e);
+        return 0;
+    }
+    return reinterpret_cast<jlong>(h.release());
+}
+
+JNIEXPORT void JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeDestroyTranscriber(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
+{
+    delete reinterpret_cast<TranscriberHandle*>(handle);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeTranscriberSetLanguage(
+    JNIEnv* env, jobject /*thiz*/, jlong handle, jstring locale)
+{
+    auto* h = reinterpret_cast<TranscriberHandle*>(handle);
+    if (!h || !h->stt) return JNI_FALSE;
+    const auto requested = jstring_to_string(env, locale);
+    std::lock_guard<std::mutex> lock(h->mutex);
+    return resolve_transcriber_language(*h, requested) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeTranscriberBegin(
+    JNIEnv* env, jobject /*thiz*/, jlong handle)
+{
+    auto* h = reinterpret_cast<TranscriberHandle*>(handle);
+    if (!h || !h->stt) return;
+    std::lock_guard<std::mutex> lock(h->mutex);
+    try {
+        h->stt->begin_stream(h->stt->input_sample_rate());
+        h->text.clear();
+        h->words.clear();
+        h->last_confidence = 0.0f;
+        h->open = true;
+    } catch (const std::exception& e) {
+        throw_native_failure(env, "Streaming transcription failed", e);
+    }
+}
+
+JNIEXPORT jstring JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeTranscriberPush(
+    JNIEnv* env, jobject /*thiz*/, jlong handle, jfloatArray samples, jint count)
+{
+    auto* h = reinterpret_cast<TranscriberHandle*>(handle);
+    if (!h || !h->stt) return nullptr;
+
+    float* data = env->GetFloatArrayElements(samples, nullptr);
+    if (!data) return nullptr;
+    std::string text;
+    {
+        std::lock_guard<std::mutex> lock(h->mutex);
+        try {
+            if (!h->open) {
+                // push_chunk opens a stream by itself; start this one's text
+                // from nothing rather than after the previous stream's.
+                h->stt->begin_stream(h->stt->input_sample_rate());
+                h->text.clear();
+                h->words.clear();
+                h->open = true;
+            }
+            if (count > 0) {
+                const auto partial = h->stt->push_chunk(data, static_cast<size_t>(count));
+                h->text += partial.text;
+                h->words = partial.words;
+                h->last_confidence = partial.confidence;
+            }
+            text = h->text;
+        } catch (const std::exception& e) {
+            env->ReleaseFloatArrayElements(samples, data, JNI_ABORT);
+            throw_native_failure(env, "Streaming transcription failed", e);
+            return nullptr;
+        }
+    }
+    env->ReleaseFloatArrayElements(samples, data, JNI_ABORT);
+    return utf8_string(env, text);
+}
+
+JNIEXPORT jstring JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeTranscriberEnd(
+    JNIEnv* env, jobject /*thiz*/, jlong handle)
+{
+    auto* h = reinterpret_cast<TranscriberHandle*>(handle);
+    if (!h || !h->stt) return nullptr;
+    std::string text;
+    {
+        std::lock_guard<std::mutex> lock(h->mutex);
+        if (h->open) {
+            try {
+                const auto result = h->stt->end_stream();
+                text = result.text;
+                h->words = result.words;
+                h->last_confidence = result.confidence;
+            } catch (const std::exception& e) {
+                h->open = false;
+                h->text.clear();
+                throw_native_failure(env, "Streaming transcription failed", e);
+                return nullptr;
+            }
+        } else {
+            h->last_confidence = 0.0f;
+            h->words.clear();
+        }
+        h->open = false;
+        h->text.clear();
+    }
+    return utf8_string(env, text);
+}
+
+JNIEXPORT void JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeTranscriberCancel(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
+{
+    auto* h = reinterpret_cast<TranscriberHandle*>(handle);
+    if (!h || !h->stt) return;
+    std::lock_guard<std::mutex> lock(h->mutex);
+    h->stt->cancel_stream();
+    h->text.clear();
+    h->words.clear();
+    h->last_confidence = 0.0f;
+    h->open = false;
+}
+
+JNIEXPORT jfloat JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeTranscriberLastConfidence(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
+{
+    auto* h = reinterpret_cast<TranscriberHandle*>(handle);
+    if (!h) return 0.0f;
+    std::lock_guard<std::mutex> lock(h->mutex);
+    return h->last_confidence;
+}
+
+// Words of the last push or end: text as decoded, leading space included.
+JNIEXPORT jobjectArray JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeTranscriberWordTexts(
+    JNIEnv* env, jobject /*thiz*/, jlong handle)
+{
+    auto* h = reinterpret_cast<TranscriberHandle*>(handle);
+    std::vector<std::string> texts;
+    if (h) {
+        std::lock_guard<std::mutex> lock(h->mutex);
+        texts.reserve(h->words.size());
+        for (const auto& word : h->words) texts.push_back(word.text);
+    }
+    jclass string_class = env->FindClass("java/lang/String");
+    jobjectArray array = env->NewObjectArray(
+        static_cast<jsize>(texts.size()), string_class, nullptr);
+    env->DeleteLocalRef(string_class);
+    if (!array) return nullptr;
+    for (size_t i = 0; i < texts.size(); ++i) {
+        jstring text = utf8_string(env, texts[i]);
+        env->SetObjectArrayElement(array, static_cast<jsize>(i), text);
+        if (text) env->DeleteLocalRef(text);
+    }
+    return array;
+}
+
+// [start, end] seconds per word of the last push or end.
+JNIEXPORT jfloatArray JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeTranscriberWordTimes(
+    JNIEnv* env, jobject /*thiz*/, jlong handle)
+{
+    auto* h = reinterpret_cast<TranscriberHandle*>(handle);
+    std::vector<float> times;
+    if (h) {
+        std::lock_guard<std::mutex> lock(h->mutex);
+        times.reserve(h->words.size() * 2);
+        for (const auto& word : h->words) {
+            times.push_back(word.start_time);
+            times.push_back(word.end_time);
+        }
+    }
+    return float_array(env, times);
+}
+
+// ---------------------------------------------------------------------------
+// SpeakerDiarizer — streaming Sortformer
+// ---------------------------------------------------------------------------
+
+JNIEXPORT jlong JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeCreateDiarizer(
+    JNIEnv* env, jobject /*thiz*/, jstring modelDir, jboolean hardwareAcceleration)
+{
+    const auto dir = jstring_to_string(env, modelDir);
+    auto h = std::make_unique<DiarizerHandle>();
+    try {
+        // The wrapper reads the export's contexts and cache period from the
+        // config.json beside the graph and refuses a graph it does not match.
+        h->diarizer = std::make_unique<speech_core::OnnxSortformerDiarizer>(
+            dir + "/sortformer-default.onnx", hardwareAcceleration == JNI_TRUE);
+        LOGI("Speaker diarizer created (speakers=%d, frame=%.3fs, chunk=%d frames)",
+             h->diarizer->speakers(), h->diarizer->frame_seconds(),
+             h->diarizer->chunk_frames());
+    } catch (const std::exception& e) {
+        throw_native_failure(env, "Native speaker diarizer failed", e);
+        return 0;
+    }
+    return reinterpret_cast<jlong>(h.release());
+}
+
+JNIEXPORT void JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeDestroyDiarizer(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
+{
+    delete reinterpret_cast<DiarizerHandle*>(handle);
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeDiarizerPush(
+    JNIEnv* env, jobject /*thiz*/, jlong handle, jfloatArray samples, jint count)
+{
+    auto* h = reinterpret_cast<DiarizerHandle*>(handle);
+    if (!h || !h->diarizer) return nullptr;
+
+    float* data = env->GetFloatArrayElements(samples, nullptr);
+    if (!data) return nullptr;
+    std::vector<float> frames;
+    {
+        std::lock_guard<std::mutex> lock(h->mutex);
+        try {
+            frames = h->diarizer->push_audio(data, static_cast<std::size_t>(count));
+        } catch (const std::exception& e) {
+            env->ReleaseFloatArrayElements(samples, data, JNI_ABORT);
+            throw_native_failure(env, "Speaker diarization failed", e);
+            return nullptr;
+        }
+    }
+    env->ReleaseFloatArrayElements(samples, data, JNI_ABORT);
+    return float_array(env, frames);
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeDiarizerEnd(
+    JNIEnv* env, jobject /*thiz*/, jlong handle)
+{
+    auto* h = reinterpret_cast<DiarizerHandle*>(handle);
+    if (!h || !h->diarizer) return nullptr;
+    std::vector<float> frames;
+    {
+        std::lock_guard<std::mutex> lock(h->mutex);
+        try {
+            frames = h->diarizer->end_stream();
+        } catch (const std::exception& e) {
+            throw_native_failure(env, "Speaker diarization failed", e);
+            return nullptr;
+        }
+    }
+    return float_array(env, frames);
+}
+
+JNIEXPORT void JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeDiarizerReset(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
+{
+    auto* h = reinterpret_cast<DiarizerHandle*>(handle);
+    if (!h || !h->diarizer) return;
+    std::lock_guard<std::mutex> lock(h->mutex);
+    h->diarizer->reset();
+}
+
+JNIEXPORT jint JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeDiarizerSpeakers(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
+{
+    auto* h = reinterpret_cast<DiarizerHandle*>(handle);
+    if (!h || !h->diarizer) return 0;
+    std::lock_guard<std::mutex> lock(h->mutex);
+    return h->diarizer->speakers();
+}
+
+JNIEXPORT jfloat JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeDiarizerFrameSeconds(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
+{
+    auto* h = reinterpret_cast<DiarizerHandle*>(handle);
+    if (!h || !h->diarizer) return 0.0f;
+    std::lock_guard<std::mutex> lock(h->mutex);
+    return h->diarizer->frame_seconds();
+}
+
+JNIEXPORT jlong JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeDiarizerFramesEmitted(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
+{
+    auto* h = reinterpret_cast<DiarizerHandle*>(handle);
+    if (!h || !h->diarizer) return 0;
+    std::lock_guard<std::mutex> lock(h->mutex);
+    return static_cast<jlong>(h->diarizer->frames_emitted());
+}
+
+// ---------------------------------------------------------------------------
+// SpeakerEmbedder — ReDimNet2-B6
+// ---------------------------------------------------------------------------
+
+JNIEXPORT jlong JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeCreateEmbedder(
+    JNIEnv* env, jobject /*thiz*/, jstring modelDir, jboolean hardwareAcceleration)
+{
+    const auto dir = jstring_to_string(env, modelDir);
+    auto h = std::make_unique<EmbedderHandle>();
+    try {
+        h->embedder = std::make_unique<speech_core::OnnxReDimNetSpeakerEmbedding>(
+            dir + "/ReDimNet2B6.onnx", hardwareAcceleration == JNI_TRUE);
+        LOGI("Speaker embedder created (dimension=%d)", h->embedder->embedding_dim());
+    } catch (const std::exception& e) {
+        throw_native_failure(env, "Native speaker embedder failed", e);
+        return 0;
+    }
+    return reinterpret_cast<jlong>(h.release());
+}
+
+JNIEXPORT void JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeDestroyEmbedder(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
+{
+    delete reinterpret_cast<EmbedderHandle*>(handle);
+}
+
+JNIEXPORT jint JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeEmbedderDimension(
+    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
+{
+    auto* h = reinterpret_cast<EmbedderHandle*>(handle);
+    if (!h || !h->embedder) return 0;
+    return h->embedder->embedding_dim();
+}
+
+JNIEXPORT jint JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeEmbedderMinimumSamples(
+    JNIEnv* /*env*/, jobject /*thiz*/)
+{
+    return static_cast<jint>(speech_core::OnnxReDimNetSpeakerEmbedding::kMinimumSamples);
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_audio_soniqo_speech_NativeBridge_nativeEmbed(
+    JNIEnv* env, jobject /*thiz*/, jlong handle,
+    jfloatArray samples, jint count, jint sampleRate)
+{
+    auto* h = reinterpret_cast<EmbedderHandle*>(handle);
+    if (!h || !h->embedder) return nullptr;
+
+    float* data = env->GetFloatArrayElements(samples, nullptr);
+    if (!data) return nullptr;
+    std::vector<float> embedding;
+    {
+        std::lock_guard<std::mutex> lock(h->mutex);
+        try {
+            embedding = h->embedder->embed(
+                data, static_cast<std::size_t>(count), static_cast<int>(sampleRate));
+        } catch (const std::exception& e) {
+            env->ReleaseFloatArrayElements(samples, data, JNI_ABORT);
+            throw_native_failure(env, "Speaker embedding failed", e);
+            return nullptr;
+        }
+    }
+    env->ReleaseFloatArrayElements(samples, data, JNI_ABORT);
+    return float_array(env, embedding);
 }
 
 } // extern "C"

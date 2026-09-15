@@ -35,6 +35,8 @@ Android के लिए ऑन-डिवाइस स्पीच SDK, [ONNX Ru
 | [Pocket TTS 100M](https://huggingface.co/soniqo/Pocket-TTS-100M-ONNX-INT8) | स्ट्रीमिंग टेक्स्ट-टू-स्पीच (वैकल्पिक, स्थिर Alba आवाज़) | ~126 MB | अभी मापा नहीं गया | अंग्रेज़ी |
 | [Supertonic-3](https://soniqo.audio/hi/guides/supertonic) | टेक्स्ट-टू-स्पीच (LiteRT, फ़्लो-मैचिंग, G2P-free, 44.1 kHz) | [~380 MB](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 MB | 31 |
 | [Silero VAD v5](https://soniqo.audio/hi/guides/vad/android) | वॉयस एक्टिविटी डिटेक्शन | [2 MB](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | <10 MB | कोई भी |
+| [Sortformer 4-स्पीकर](https://huggingface.co/soniqo/Sortformer-Diarization-4spk-ONNX) | स्ट्रीमिंग स्पीकर डायराइज़ेशन (वैकल्पिक) | [475 MB](https://huggingface.co/soniqo/Sortformer-Diarization-4spk-ONNX) | अभी मापा नहीं गया | कोई भी |
+| [ReDimNet2-B6](https://huggingface.co/soniqo/ReDimNet2-B6-ONNX-FP32) | स्पीकर एम्बेडिंग (वैकल्पिक) | [51 MB](https://huggingface.co/soniqo/ReDimNet2-B6-ONNX-FP32) | अभी मापा नहीं गया | कोई भी |
 | [DeepFilterNet3](https://soniqo.audio/hi/guides/denoise/android) | शोर रद्दीकरण | [~8 MB](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | डिफ़ॉल्ट रूप से लोड नहीं | कोई भी |
 | [FunctionGemma 270M](https://soniqo.audio/hi/guides/function-calls) | ऑन-डिवाइस LLM — संरचित फ़ंक्शन / टूल कॉल | [283 MB](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | ऐप runtime पर निर्भर | EN-tuned |
 
@@ -159,6 +161,35 @@ onset और offset थ्रेशोल्ड, न्यूनतम स्प
 प्री-स्पीच बफ़र जो पहला अक्षर बचाए रखता है। यह पथ
 `ModelManager.ensureVadModels()` और अलग `models_vad/` कैश उपयोग करता है, इसलिए
 STT/TTS बंडल कभी डाउनलोड नहीं होते।
+
+### मीटिंग ट्रांसक्रिप्शन के बिल्डिंग ब्लॉक
+
+जो ऐप अपनी रिकॉर्डिंग और सेगमेंटेशन खुद संभालते हैं — जैसे मीटिंग रिकॉर्डर या नोट लेने वाला ऐप — वे पाइपलाइन के बिना रिकग्नाइज़र, डायराइज़र और स्पीकर एनकोडर को अलग-अलग लोड कर सकते हैं। हर मॉडल का अपना डाउनलोड और कैश डायरेक्टरी है, और कोई भी प्रोडक्ट से जुड़ा फ़ैसला नहीं करता: ट्रांसक्राइबर टेक्स्ट लौटाता है, डायराइज़र हर फ़्रेम के लिए स्पीकर प्रायिकताएँ, और एनकोडर 192-आयामी आवाज़ वेक्टर। थ्रेशोल्ड, टर्न, स्पीकर लेबल और आवाज़ों का मिलान ऐप तय करता है।
+
+```kotlin
+// वैकल्पिक: उपयोगकर्ता का चुना हुआ मिरर, जो Hugging Face जैसी संरचना देता है।
+ModelManager.endpoint = "https://hf-mirror.com"
+
+val transcriber = StreamingTranscriber(
+    TranscriberConfig(modelDir = ModelManager.ensureTranscriberModels(context))
+)
+transcriber.beginStream()
+transcriber.pushAudio(samples)            // 16 kHz मोनो float32; अब तक का टेक्स्ट
+val text = transcriber.endStream().text
+
+val diarizer = SpeakerDiarizer(
+    DiarizerConfig(modelDir = ModelManager.ensureDiarizerModels(context))
+)
+val frames = diarizer.pushAudio(samples)  // [फ़्रेम x diarizer.speakers], अक्सर खाली
+val tail = diarizer.endStream()           // रिकॉर्डिंग खत्म होने पर
+
+val embedder = SpeakerEmbedder(
+    SpeakerEmbedderConfig(modelDir = ModelManager.ensureSpeakerEmbeddingModels(context))
+)
+val voice = embedder.embed(speech)        // कम से कम 2 सेकंड; FloatArray(192)
+```
+
+`TranscriberConfig.language` का डिफ़ॉल्ट `"auto"` है — speech-swift की तरह Nemotron का स्वचालित-भाषा प्रॉम्प्ट; `"en-US"`, `"pt_BR"` या सिर्फ़ `"fr"` एक भाषा तय करता है। हर ट्रांसक्रिप्ट में शब्द-स्तरीय टाइमिंग होती है, `beginStream` से सेकंड में, जो उस एनकोडर फ़्रेम से ली जाती है जिस पर हर टोकन निकला। Sortformer हर रिकॉर्डिंग के लिए एक स्ट्रीम है और ऑडियो से लगभग 30 सेकंड पीछे जवाब देता है, क्योंकि प्रकाशित एक्सपोर्ट हर कॉल में 27.2 सेकंड डिकोड करता है। `ModelDownloadWorker.enqueue(context, includePipeline = false, includeTranscriber = true, includeDiarizer = true, includeSpeakerEmbedding = true)` तीनों सेट बैकग्राउंड में डाउनलोड करता है।
 
 ## स्रोत से बिल्ड करें
 

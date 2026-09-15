@@ -35,6 +35,8 @@ This repo is the **Android packaging**: Kotlin SDK, JNI bridge, demo app. The C+
 | [Pocket TTS 100M](https://huggingface.co/soniqo/Pocket-TTS-100M-ONNX-INT8) | Streaming text-to-speech (optional, fixed Alba voice) | ~126 MB | not yet measured | English |
 | [Supertonic-3](https://soniqo.audio/guides/supertonic) | Text-to-speech (LiteRT, flow-matching, G2P-free, 44.1 kHz) | [~380 MB](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 MB | 31 |
 | [Silero VAD v5](https://soniqo.audio/guides/vad/android) | Voice activity detection | [2 MB](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | <10 MB | Any |
+| [Sortformer 4-speaker](https://huggingface.co/soniqo/Sortformer-Diarization-4spk-ONNX) | Streaming speaker diarization (optional) | [475 MB](https://huggingface.co/soniqo/Sortformer-Diarization-4spk-ONNX) | not yet measured | Any |
+| [ReDimNet2-B6](https://huggingface.co/soniqo/ReDimNet2-B6-ONNX-FP32) | Speaker embeddings (optional) | [51 MB](https://huggingface.co/soniqo/ReDimNet2-B6-ONNX-FP32) | not yet measured | Any |
 | [DeepFilterNet3](https://soniqo.audio/guides/denoise/android) | Noise cancellation | [~8 MB](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | not loaded by default | Any |
 | [FunctionGemma 270M](https://soniqo.audio/guides/function-calls) | On-device LLM — structured function / tool calls | [283 MB](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | app-runtime dependent | EN-tuned |
 
@@ -182,6 +184,48 @@ onset and offset thresholds, minimum speech duration, end-of-speech silence,
 and the pre-speech buffer that keeps the first syllable. This path uses
 `ModelManager.ensureVadModels()` and a separate `models_vad/` cache, so it
 never pulls the STT/TTS bundles.
+
+### Meeting transcription building blocks
+
+Apps that run their own capture and segmentation — a meeting recorder, a
+note taker — can load the recognizer, the diarizer and the speaker encoder
+on their own, without the pipeline. Each has its own download and cache
+directory, and none makes a product decision: the transcriber returns text,
+the diarizer per-frame speaker probabilities, and the embedder a
+192-dimensional voice vector. Thresholds, turns, speaker labels and voice
+matching stay in the app.
+
+```kotlin
+// Optional: a mirror the user chose, serving Hugging Face's layout.
+ModelManager.endpoint = "https://hf-mirror.com"
+
+val transcriber = StreamingTranscriber(
+    TranscriberConfig(modelDir = ModelManager.ensureTranscriberModels(context))
+)
+transcriber.beginStream()
+transcriber.pushAudio(samples)            // 16 kHz mono float32; text so far
+val text = transcriber.endStream().text
+
+val diarizer = SpeakerDiarizer(
+    DiarizerConfig(modelDir = ModelManager.ensureDiarizerModels(context))
+)
+val frames = diarizer.pushAudio(samples)  // [frames x diarizer.speakers], often empty
+val tail = diarizer.endStream()           // when the recording ends
+
+val embedder = SpeakerEmbedder(
+    SpeakerEmbedderConfig(modelDir = ModelManager.ensureSpeakerEmbeddingModels(context))
+)
+val voice = embedder.embed(speech)        // at least 2 s; FloatArray(192)
+```
+
+`TranscriberConfig.language` defaults to `"auto"`, Nemotron's
+automatic-language prompt, as in speech-swift; `"en-US"`, `"pt_BR"` or a
+bare `"fr"` pins one language. Each transcript carries word timings, in seconds from `beginStream`,
+taken from the encoder frame each token was emitted on.
+Sortformer is one stream per recording and answers about 30 seconds behind
+the audio, because the published export decodes 27.2 seconds per call.
+`ModelDownloadWorker.enqueue(context, includePipeline = false, includeTranscriber = true, includeDiarizer = true, includeSpeakerEmbedding = true)`
+fetches the three sets in the background.
 
 ### FunctionGemma 270M (on-device tool-calling LLM)
 
