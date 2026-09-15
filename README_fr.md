@@ -35,6 +35,8 @@ Ce dépôt fournit le **packaging Android** : SDK Kotlin, pont JNI, application 
 | [Pocket TTS 100M](https://huggingface.co/soniqo/Pocket-TTS-100M-ONNX-INT8) | Synthèse vocale streaming (optionnel, voix Alba fixe) | ~126 Mo | pas encore mesuré | Anglais |
 | [Supertonic-3](https://soniqo.audio/fr/guides/supertonic) | Synthèse vocale (LiteRT, flow-matching, G2P-free, 44,1 kHz) | [~380 Mo](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 Mo | 31 |
 | [Silero VAD v5](https://soniqo.audio/fr/guides/vad/android) | Détection d'activité vocale | [2 Mo](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | <10 Mo | Toutes |
+| [Sortformer 4 locuteurs](https://huggingface.co/soniqo/Sortformer-Diarization-4spk-ONNX) | Diarisation des locuteurs en streaming (optionnel) | [475 Mo](https://huggingface.co/soniqo/Sortformer-Diarization-4spk-ONNX) | pas encore mesuré | Toutes |
+| [ReDimNet2-B6](https://huggingface.co/soniqo/ReDimNet2-B6-ONNX-FP32) | Embeddings de locuteur (optionnel) | [51 Mo](https://huggingface.co/soniqo/ReDimNet2-B6-ONNX-FP32) | pas encore mesuré | Toutes |
 | [DeepFilterNet3](https://soniqo.audio/fr/guides/denoise/android) | Suppression de bruit | [~8 Mo](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | non chargé par défaut | Toutes |
 | [FunctionGemma 270M](https://soniqo.audio/fr/guides/function-calls) | LLM sur appareil — appels structurés de fonctions / outils | [283 Mo](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | dépend du runtime de l'app | Ajusté EN |
 
@@ -160,6 +162,35 @@ interne : seuils d'attaque et de relâchement, durée minimale de parole, silenc
 de fin de parole et le tampon pré-parole qui conserve la première syllabe. Ce
 chemin utilise `ModelManager.ensureVadModels()` et un cache `models_vad/`
 distinct, il ne télécharge donc jamais les bundles STT/TTS.
+
+### Briques pour la transcription de réunions
+
+Les apps qui gèrent elles-mêmes la capture et la segmentation — un enregistreur de réunions, une app de prise de notes — peuvent charger séparément le reconnaisseur, le diariseur et l'encodeur de locuteurs, sans le pipeline. Chacun a son propre téléchargement et son propre répertoire de cache, et aucun ne prend de décision produit : le transcripteur renvoie du texte, le diariseur des probabilités de locuteur par trame, et l'encodeur un vecteur vocal à 192 dimensions. Les seuils, les tours de parole, les étiquettes de locuteur et la comparaison des voix restent dans l'app.
+
+```kotlin
+// Facultatif : un miroir choisi par l'utilisateur, avec l'arborescence de Hugging Face.
+ModelManager.endpoint = "https://hf-mirror.com"
+
+val transcriber = StreamingTranscriber(
+    TranscriberConfig(modelDir = ModelManager.ensureTranscriberModels(context))
+)
+transcriber.beginStream()
+transcriber.pushAudio(samples)            // 16 kHz mono float32 ; texte jusqu'ici
+val text = transcriber.endStream().text
+
+val diarizer = SpeakerDiarizer(
+    DiarizerConfig(modelDir = ModelManager.ensureDiarizerModels(context))
+)
+val frames = diarizer.pushAudio(samples)  // [trames x diarizer.speakers], souvent vide
+val tail = diarizer.endStream()           // à la fin de l'enregistrement
+
+val embedder = SpeakerEmbedder(
+    SpeakerEmbedderConfig(modelDir = ModelManager.ensureSpeakerEmbeddingModels(context))
+)
+val voice = embedder.embed(speech)        // au moins 2 s ; FloatArray(192)
+```
+
+`TranscriberConfig.language` vaut `"auto"` par défaut : le prompt de langue automatique de Nemotron, comme dans speech-swift ; `"en-US"`, `"pt_BR"` ou simplement `"fr"` fixent une langue. Chaque transcription contient l'horodatage de chaque mot, en secondes depuis `beginStream`, tiré de la trame d'encodeur où chaque token a été émis. Sortformer utilise un flux par enregistrement et répond environ 30 secondes après l'audio, car l'export publié décode 27,2 secondes par appel. `ModelDownloadWorker.enqueue(context, includePipeline = false, includeTranscriber = true, includeDiarizer = true, includeSpeakerEmbedding = true)` télécharge les trois ensembles en arrière-plan.
 
 ## Compiler depuis les sources
 

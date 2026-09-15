@@ -96,6 +96,50 @@ internal object NativeBridge {
     external fun nativeResetVad(handle: Long)
     external fun nativeVadInSpeech(handle: Long): Boolean
 
+    // Standalone meeting-transcription models: a Nemotron multilingual
+    // stream, a streaming Sortformer diarizer and a ReDimNet speaker encoder,
+    // with no VoicePipeline. Must stay in lockstep with the matching sections
+    // of jni_bridge.cpp.
+    external fun nativeCreateTranscriber(
+        modelDir: String,
+        sttBackend: Int, // SttBackend.ordinal: 0=ONNX, 1=LITERT
+        hardwareAcceleration: Boolean,
+        language: String, // "auto" or a languages.json locale
+    ): Long
+    external fun nativeDestroyTranscriber(handle: Long)
+    external fun nativeTranscriberSetLanguage(handle: Long, locale: String): Boolean
+    external fun nativeTranscriberBegin(handle: Long)
+    // Returns the open stream's text so far, not only this chunk's.
+    external fun nativeTranscriberPush(handle: Long, samples: FloatArray, count: Int): String?
+    external fun nativeTranscriberEnd(handle: Long): String?
+    external fun nativeTranscriberCancel(handle: Long)
+    external fun nativeTranscriberLastConfidence(handle: Long): Float
+    // Words of the last push or end: decoded text with its leading space, and
+    // [start, end] seconds per word from the start of the stream.
+    external fun nativeTranscriberWordTexts(handle: Long): Array<String>?
+    external fun nativeTranscriberWordTimes(handle: Long): FloatArray?
+
+    external fun nativeCreateDiarizer(modelDir: String, hardwareAcceleration: Boolean): Long
+    external fun nativeDestroyDiarizer(handle: Long)
+    // [frames x speakers] probabilities finalised by this call, row by row.
+    external fun nativeDiarizerPush(handle: Long, samples: FloatArray, count: Int): FloatArray?
+    external fun nativeDiarizerEnd(handle: Long): FloatArray?
+    external fun nativeDiarizerReset(handle: Long)
+    external fun nativeDiarizerSpeakers(handle: Long): Int
+    external fun nativeDiarizerFrameSeconds(handle: Long): Float
+    external fun nativeDiarizerFramesEmitted(handle: Long): Long
+
+    external fun nativeCreateEmbedder(modelDir: String, hardwareAcceleration: Boolean): Long
+    external fun nativeDestroyEmbedder(handle: Long)
+    external fun nativeEmbedderDimension(handle: Long): Int
+    external fun nativeEmbedderMinimumSamples(): Int
+    external fun nativeEmbed(
+        handle: Long,
+        samples: FloatArray,
+        count: Int,
+        sampleRate: Int,
+    ): FloatArray?
+
     /** Called from native code on the thread that pushed the audio. */
     fun interface VadCallback {
         // type: 0=SpeechStarted, 1=SpeechEnded. `audio` is the utterance

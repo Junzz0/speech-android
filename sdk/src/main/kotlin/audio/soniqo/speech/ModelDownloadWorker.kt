@@ -21,6 +21,11 @@ import java.io.IOException
  * resumes partial downloads via the same on-disk `.tmp` files, retries on
  * `IOException`, and reports progress via [setProgress].
  *
+ * Besides the pipeline set it can fetch the standalone meeting-transcription
+ * sets — Silero VAD, the [StreamingTranscriber] recognizer, the
+ * [SpeakerDiarizer] and the [SpeakerEmbedder] — in the same worker and on the
+ * same progress bar. Pass `includePipeline = false` to fetch only those.
+ *
  * ### Usage
  *
  * ```
@@ -56,6 +61,14 @@ class ModelDownloadWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(context, params) {
 
+    /** One ensure*() call of the download, with its share of the byte bar. */
+    private class Phase(
+        val plannedBytes: Long,
+        /** Output key for the directory this phase returns, or null. */
+        val outputKey: String?,
+        val download: suspend (report: (ModelManager.Progress) -> Unit) -> String,
+    )
+
     override suspend fun doWork(): Result {
         val precision = inputData.getString(KEY_PRECISION)
             ?.let { runCatching { ModelPrecision.valueOf(it) }.getOrNull() }
@@ -78,25 +91,90 @@ class ModelDownloadWorker(
         val includeLlm = inputData.getBoolean(KEY_INCLUDE_LLM, false)
         val supertonicLatentBuckets = inputData.getBoolean(KEY_SUPERTONIC_LATENT_BUCKETS, false)
         val enableSmartTurn = inputData.getBoolean(KEY_ENABLE_SMART_TURN, false)
+        val includePipeline = inputData.getBoolean(KEY_INCLUDE_PIPELINE, true)
+        val includeVad = inputData.getBoolean(KEY_INCLUDE_VAD, false)
+        val includeTranscriber = inputData.getBoolean(KEY_INCLUDE_TRANSCRIBER, false)
+        val transcriberBackend = inputData.getString(KEY_TRANSCRIBER_BACKEND)
+            ?.let { runCatching { SttBackend.valueOf(it) }.getOrNull() }
+            ?: SttBackend.LITERT
+        val transcriberPrecision = inputData.getString(KEY_TRANSCRIBER_PRECISION)
+            ?.let { runCatching { ModelPrecision.valueOf(it) }.getOrNull() }
+            ?: ModelPrecision.INT8
+        val includeDiarizer = inputData.getBoolean(KEY_INCLUDE_DIARIZER, false)
+        val includeSpeakerEmbedding = inputData.getBoolean(KEY_INCLUDE_SPEAKER_EMBEDDING, false)
 
         runCatching { setForeground(buildForegroundInfo(0, "Preparing speech models…")) }
 
-        // The pipeline models and the LLM bundle are two back-to-back
-        // ensure*() calls, each reporting bytes only for its own set. Planning
-        // both up front lets them render as one continuous 0→100 bar instead
-        // of two sweeps that visibly reset to zero in the middle.
-        val plannedPipeline = ModelManager.plannedModelBytes(
-            applicationContext, precision, sttModel, sttBackend, ttsModel,
-            enableSmartTurn,
-        )
-        val plannedLlm =
-            if (includeLlm) ModelManager.plannedLlmBytes(applicationContext, llmModel) else 0L
+        // Every requested set is one back-to-back ensure*() call, each
+        // reporting bytes only for its own set. Planning them all up front
+        // lets them render as one continuous 0→100 bar instead of sweeps that
+        // visibly reset to zero in between.
+        val context = applicationContext
+        val phases = buildList {
+            if (includePipeline) {
+                add(Phase(
+                    plannedBytes = ModelManager.plannedModelBytes(
+                        context, precision, sttModel, sttBackend, ttsModel, enableSmartTurn,
+                    ),
+                    outputKey = KEY_MODEL_DIR,
+                ) { report ->
+                    ModelManager.ensureModels(
+                        context,
+                        precision = precision,
+                        sttModel = sttModel,
+                        sttBackend = sttBackend,
+                        ttsModel = ttsModel,
+                        onProgress = report,
+                        supertonicLatentBuckets = supertonicLatentBuckets,
+                        enableSmartTurn = enableSmartTurn,
+                    )
+                })
+            }
+            if (includeVad) {
+                add(Phase(ModelManager.plannedVadBytes(context), KEY_VAD_MODEL_DIR) { report ->
+                    ModelManager.ensureVadModels(context, onProgress = report)
+                })
+            }
+            if (includeTranscriber) {
+                add(Phase(
+                    plannedBytes = ModelManager.plannedTranscriberBytes(
+                        context, transcriberBackend, transcriberPrecision,
+                    ),
+                    outputKey = KEY_TRANSCRIBER_MODEL_DIR,
+                ) { report ->
+                    ModelManager.ensureTranscriberModels(
+                        context,
+                        backend = transcriberBackend,
+                        precision = transcriberPrecision,
+                        onProgress = report,
+                    )
+                })
+            }
+            if (includeDiarizer) {
+                add(Phase(ModelManager.plannedDiarizerBytes(context), KEY_DIARIZER_MODEL_DIR) { report ->
+                    ModelManager.ensureDiarizerModels(context, onProgress = report)
+                })
+            }
+            if (includeSpeakerEmbedding) {
+                add(Phase(
+                    ModelManager.plannedSpeakerEmbeddingBytes(context),
+                    KEY_SPEAKER_EMBEDDING_MODEL_DIR,
+                ) { report ->
+                    ModelManager.ensureSpeakerEmbeddingModels(context, onProgress = report)
+                })
+            }
+            if (includeLlm) {
+                add(Phase(ModelManager.plannedLlmBytes(context, llmModel), outputKey = null) { report ->
+                    ModelManager.ensureLlmModels(context, llmModel = llmModel, onProgress = report)
+                })
+            }
+        }
 
         // Bytes attributed to phases that have already finished, and bytes
         // planned for phases not yet started. Both are folded into every
         // sample so the numerator and denominator span the whole download.
         var phaseBase = 0L
-        var laterPhases = plannedLlm
+        var laterPhases = phases.drop(1).sumOf { it.plannedBytes }
 
         // Rate is measured from the first sample rather than from bytes
         // already on disk, so resuming a partial download doesn't report an
@@ -165,30 +243,24 @@ class ModelDownloadWorker(
         }
 
         return try {
-            val modelDir = ModelManager.ensureModels(
-                applicationContext,
-                precision = precision,
-                sttModel = sttModel,
-                sttBackend = sttBackend,
-                ttsModel = ttsModel,
-                onProgress = report,
-                supertonicLatentBuckets = supertonicLatentBuckets,
-                enableSmartTurn = enableSmartTurn,
-            )
-            if (includeLlm) {
-                // Hand the bar over to the LLM phase: what the pipeline phase
-                // actually transferred is now behind us, and nothing is ahead.
-                // Falls back to the estimate when the pipeline was fully cached
-                // and never reported a sample.
-                phaseBase = if (lastDone > 0L) lastDone else plannedPipeline
-                laterPhases = 0L
-                ModelManager.ensureLlmModels(
-                    applicationContext,
-                    llmModel = llmModel,
-                    onProgress = report,
-                )
+            val outputs = mutableListOf<Pair<String, Any?>>()
+            phases.forEachIndexed { index, phase ->
+                if (index > 0) {
+                    // Hand the bar to the next phase: what the finished phase
+                    // actually transferred is now behind us. Falls back to its
+                    // estimate when it was fully cached and never reported a
+                    // sample.
+                    phaseBase = if (lastDone > phaseBase) {
+                        lastDone
+                    } else {
+                        phaseBase + phases[index - 1].plannedBytes
+                    }
+                    laterPhases = phases.drop(index + 1).sumOf { it.plannedBytes }
+                }
+                val dir = phase.download(report)
+                phase.outputKey?.let { outputs += it to dir }
             }
-            Result.success(workDataOf(KEY_MODEL_DIR to modelDir))
+            Result.success(workDataOf(*outputs.toTypedArray()))
         } catch (e: IOException) {
             // Network / disk hiccup — let WorkManager retry with backoff.
             Result.retry()
@@ -319,9 +391,21 @@ class ModelDownloadWorker(
         const val KEY_SUPERTONIC_LATENT_BUCKETS = "supertonicLatentBuckets"
         const val KEY_ENABLE_SMART_TURN = "enableSmartTurn"
         const val KEY_LLM_MODEL = "llmModel"
+        /** Download the pipeline set ([ModelManager.ensureModels]); default true. */
+        const val KEY_INCLUDE_PIPELINE = "includePipeline"
+        const val KEY_INCLUDE_VAD = "includeVad"
+        const val KEY_INCLUDE_TRANSCRIBER = "includeTranscriber"
+        const val KEY_TRANSCRIBER_BACKEND = "transcriberBackend"
+        const val KEY_TRANSCRIBER_PRECISION = "transcriberPrecision"
+        const val KEY_INCLUDE_DIARIZER = "includeDiarizer"
+        const val KEY_INCLUDE_SPEAKER_EMBEDDING = "includeSpeakerEmbedding"
 
         // Output keys
         const val KEY_MODEL_DIR = "modelDir"
+        const val KEY_VAD_MODEL_DIR = "vadModelDir"
+        const val KEY_TRANSCRIBER_MODEL_DIR = "transcriberModelDir"
+        const val KEY_DIARIZER_MODEL_DIR = "diarizerModelDir"
+        const val KEY_SPEAKER_EMBEDDING_MODEL_DIR = "speakerEmbeddingModelDir"
         const val KEY_ERROR = "error"
 
         // Progress keys
@@ -363,14 +447,25 @@ class ModelDownloadWorker(
             llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
             supertonicLatentBuckets: Boolean = false,
             enableSmartTurn: Boolean = false,
+            includePipeline: Boolean = true,
+            includeVad: Boolean = false,
+            includeTranscriber: Boolean = false,
+            transcriberBackend: SttBackend = SttBackend.LITERT,
+            transcriberPrecision: ModelPrecision = ModelPrecision.INT8,
+            includeDiarizer: Boolean = false,
+            includeSpeakerEmbedding: Boolean = false,
         ): String {
+            val standaloneSets = includeVad || includeTranscriber ||
+                includeDiarizer || includeSpeakerEmbedding
             if (
                 precision == ModelPrecision.INT8 &&
                 sttModel == SttModel.PARAKEET_EOU &&
                 sttBackend == SttBackend.ONNX &&
                 ttsModel.isKokoro &&
                 !includeLlm &&
-                !enableSmartTurn
+                !enableSmartTurn &&
+                includePipeline &&
+                !standaloneSets
             ) {
                 return UNIQUE_NAME
             }
@@ -382,7 +477,20 @@ class ModelDownloadWorker(
             }
             val ttsName = if (ttsModel.isKokoro) TtsModel.KOKORO.name else ttsModel.name
             val smartTurn = if (enableSmartTurn) ".smartTurn" else ""
-            return "$UNIQUE_NAME.${precision.name}.${sttModel.name}.${sttBackend.name}.$ttsName$buckets$smartTurn$llm"
+            val pipeline = if (includePipeline) {
+                ".${precision.name}.${sttModel.name}.${sttBackend.name}.$ttsName$buckets$smartTurn"
+            } else {
+                ".noPipeline"
+            }
+            val standalone = buildString {
+                if (includeVad) append(".vad")
+                if (includeTranscriber) {
+                    append(".transcriber.${transcriberBackend.name}.${transcriberPrecision.name}")
+                }
+                if (includeDiarizer) append(".diarizer")
+                if (includeSpeakerEmbedding) append(".speakerEmbedding")
+            }
+            return "$UNIQUE_NAME$pipeline$standalone$llm"
         }
 
         fun request(
@@ -394,6 +502,13 @@ class ModelDownloadWorker(
             llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
             supertonicLatentBuckets: Boolean = false,
             enableSmartTurn: Boolean = false,
+            includePipeline: Boolean = true,
+            includeVad: Boolean = false,
+            includeTranscriber: Boolean = false,
+            transcriberBackend: SttBackend = SttBackend.LITERT,
+            transcriberPrecision: ModelPrecision = ModelPrecision.INT8,
+            includeDiarizer: Boolean = false,
+            includeSpeakerEmbedding: Boolean = false,
         ) =
             OneTimeWorkRequestBuilder<ModelDownloadWorker>()
                 .setInputData(workDataOf(
@@ -405,6 +520,13 @@ class ModelDownloadWorker(
                     KEY_LLM_MODEL to llmModel.name,
                     KEY_SUPERTONIC_LATENT_BUCKETS to supertonicLatentBuckets,
                     KEY_ENABLE_SMART_TURN to enableSmartTurn,
+                    KEY_INCLUDE_PIPELINE to includePipeline,
+                    KEY_INCLUDE_VAD to includeVad,
+                    KEY_INCLUDE_TRANSCRIBER to includeTranscriber,
+                    KEY_TRANSCRIBER_BACKEND to transcriberBackend.name,
+                    KEY_TRANSCRIBER_PRECISION to transcriberPrecision.name,
+                    KEY_INCLUDE_DIARIZER to includeDiarizer,
+                    KEY_INCLUDE_SPEAKER_EMBEDDING to includeSpeakerEmbedding,
                 ))
                 .build()
 
@@ -423,6 +545,13 @@ class ModelDownloadWorker(
             llmModel: LlmModel = LlmModel.FUNCTIONGEMMA,
             supertonicLatentBuckets: Boolean = false,
             enableSmartTurn: Boolean = false,
+            includePipeline: Boolean = true,
+            includeVad: Boolean = false,
+            includeTranscriber: Boolean = false,
+            transcriberBackend: SttBackend = SttBackend.LITERT,
+            transcriberPrecision: ModelPrecision = ModelPrecision.INT8,
+            includeDiarizer: Boolean = false,
+            includeSpeakerEmbedding: Boolean = false,
         ): java.util.UUID {
             val req = request(
                 precision = precision,
@@ -433,6 +562,13 @@ class ModelDownloadWorker(
                 llmModel = llmModel,
                 supertonicLatentBuckets = supertonicLatentBuckets,
                 enableSmartTurn = enableSmartTurn,
+                includePipeline = includePipeline,
+                includeVad = includeVad,
+                includeTranscriber = includeTranscriber,
+                transcriberBackend = transcriberBackend,
+                transcriberPrecision = transcriberPrecision,
+                includeDiarizer = includeDiarizer,
+                includeSpeakerEmbedding = includeSpeakerEmbedding,
             )
             WorkManager.getInstance(context).enqueueUniqueWork(
                 uniqueName(
@@ -444,6 +580,13 @@ class ModelDownloadWorker(
                     llmModel = llmModel,
                     supertonicLatentBuckets = supertonicLatentBuckets,
                     enableSmartTurn = enableSmartTurn,
+                    includePipeline = includePipeline,
+                    includeVad = includeVad,
+                    includeTranscriber = includeTranscriber,
+                    transcriberBackend = transcriberBackend,
+                    transcriberPrecision = transcriberPrecision,
+                    includeDiarizer = includeDiarizer,
+                    includeSpeakerEmbedding = includeSpeakerEmbedding,
                 ),
                 ExistingWorkPolicy.KEEP, req,
             )

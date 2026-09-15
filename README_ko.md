@@ -35,6 +35,8 @@
 | [Pocket TTS 100M](https://huggingface.co/soniqo/Pocket-TTS-100M-ONNX-INT8) | 스트리밍 음성 합성(선택, 고정 Alba 음성) | ~126 MB | 미측정 | 영어 |
 | [Supertonic-3](https://soniqo.audio/ko/guides/supertonic) | 텍스트 음성 변환(LiteRT, flow-matching, G2P-free, 44.1 kHz) | [~380 MB](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 MB | 31 |
 | [Silero VAD v5](https://soniqo.audio/ko/guides/vad/android) | 음성 활동 감지 | [2 MB](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | <10 MB | 모든 언어 |
+| [Sortformer 4화자](https://huggingface.co/soniqo/Sortformer-Diarization-4spk-ONNX) | 스트리밍 화자 분리(선택) | [475 MB](https://huggingface.co/soniqo/Sortformer-Diarization-4spk-ONNX) | 미측정 | 모든 언어 |
+| [ReDimNet2-B6](https://huggingface.co/soniqo/ReDimNet2-B6-ONNX-FP32) | 화자 임베딩(선택) | [51 MB](https://huggingface.co/soniqo/ReDimNet2-B6-ONNX-FP32) | 미측정 | 모든 언어 |
 | [DeepFilterNet3](https://soniqo.audio/ko/guides/denoise/android) | 노이즈 캔슬링 | [~8 MB](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | 기본으로 로드하지 않음 | 모든 언어 |
 | [FunctionGemma 270M](https://soniqo.audio/ko/guides/function-calls) | 온디바이스 LLM — 구조화 함수 / 도구 호출 | [283 MB](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | 앱 런타임에 따라 다름 | EN 튜닝 |
 
@@ -156,6 +158,35 @@ detector.flush()
 임계값, 최소 발화 길이, 발화 종료 무음 길이, 그리고 첫 음절을 지켜 주는 프리스피치
 버퍼입니다. 이 경로는 `ModelManager.ensureVadModels()`와 별도의 `models_vad/`
 캐시를 사용하므로 STT/TTS 번들을 내려받지 않습니다.
+
+### 회의 전사 구성 요소
+
+녹음과 구간 분할을 직접 처리하는 앱(회의 녹음기, 메모 앱 등)은 파이프라인 없이 인식기, 화자 분리 모델, 화자 인코더를 따로 불러올 수 있습니다. 각각 고유한 다운로드와 캐시 디렉터리를 쓰며, 어느 것도 제품 결정을 대신하지 않습니다. 전사기는 텍스트를, 화자 분리 모델은 프레임별 화자 확률을, 인코더는 192차원 음성 벡터를 반환합니다. 임곗값, 턴, 화자 레이블, 음성 매칭은 앱이 결정합니다.
+
+```kotlin
+// 선택: 사용자가 고른, Hugging Face 구조를 따르는 미러.
+ModelManager.endpoint = "https://hf-mirror.com"
+
+val transcriber = StreamingTranscriber(
+    TranscriberConfig(modelDir = ModelManager.ensureTranscriberModels(context))
+)
+transcriber.beginStream()
+transcriber.pushAudio(samples)            // 16 kHz 모노 float32; 지금까지의 텍스트
+val text = transcriber.endStream().text
+
+val diarizer = SpeakerDiarizer(
+    DiarizerConfig(modelDir = ModelManager.ensureDiarizerModels(context))
+)
+val frames = diarizer.pushAudio(samples)  // [프레임 수 x diarizer.speakers], 대개 비어 있음
+val tail = diarizer.endStream()           // 녹음이 끝날 때
+
+val embedder = SpeakerEmbedder(
+    SpeakerEmbedderConfig(modelDir = ModelManager.ensureSpeakerEmbeddingModels(context))
+)
+val voice = embedder.embed(speech)        // 최소 2초; FloatArray(192)
+```
+
+`TranscriberConfig.language`의 기본값은 `"auto"`로, speech-swift와 마찬가지로 Nemotron의 자동 언어 프롬프트를 사용합니다. `"en-US"`, `"pt_BR"`, 또는 `"fr"`처럼 언어만 지정하면 한 언어로 고정됩니다. 전사 결과에는 각 토큰이 출력된 인코더 프레임을 기준으로 한 단어별 타이밍(`beginStream`부터의 초)이 포함됩니다. Sortformer는 녹음당 하나의 스트림이며, 공개된 내보내기가 호출당 27.2초를 디코딩하므로 결과가 오디오보다 약 30초 늦게 나옵니다. `ModelDownloadWorker.enqueue(context, includePipeline = false, includeTranscriber = true, includeDiarizer = true, includeSpeakerEmbedding = true)`로 세 세트를 백그라운드에서 받을 수 있습니다.
 
 ## 소스에서 빌드
 

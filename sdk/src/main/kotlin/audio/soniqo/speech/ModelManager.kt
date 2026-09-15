@@ -20,7 +20,9 @@ import java.util.concurrent.TimeUnit
  */
 object ModelManager {
 
-    private const val BASE_URL = "https://huggingface.co/soniqo"
+    /** Origin model files come from unless [endpoint] is changed. */
+    const val DEFAULT_ENDPOINT = "https://huggingface.co"
+    private const val MODEL_ORGANIZATION = "soniqo"
     private const val POCKET_TTS_REVISION = "v1.0.0"
     private const val POCKET_TTS_DIR = "pocket_tts"
     // Canary publishes no tags, so this is the commit that the bundle in the
@@ -34,6 +36,11 @@ object ModelManager {
     private const val NEMOTRON_LITERT_FP16_REVISION =
         "1503a9a1eb75b813b83ba65bf5e9fecea4a46091"
     private const val SMART_TURN_REVISION = "b48fdbe20772bcec1fef02f4a1a355236ef6359e"
+    // Both wrappers read their geometry out of these bundles, so each is
+    // pinned to the commit it was validated against: a re-export must not
+    // reach an installed SDK unannounced.
+    private const val SORTFORMER_REVISION = "a7176b247fb7df5588414c20632f584d4f8562c8"
+    private const val REDIMNET_REVISION = "e911e3f063899805f3d94ee5d1db53fff8e9f3e8"
 
     // Bump when models on HuggingFace are updated to trigger cache invalidation.
     // v6: default STT switched to Parakeet-EOU-120M-ONNX-INT8, the low-memory
@@ -51,6 +58,26 @@ object ModelManager {
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
+
+    /**
+     * Origin every model file is downloaded from: [DEFAULT_ENDPOINT] unless the
+     * app changes it. A mirror has to serve Hugging Face's
+     * `/<organization>/<repo>/resolve/<revision>/<file>` layout, as
+     * `https://hf-mirror.com` does. Offer one only as the user's explicit
+     * choice, because whoever runs it receives the requested model names and
+     * the device's connection metadata.
+     *
+     * Set it before an `ensure…` call; each call reads it once and fetches its
+     * whole set from that origin. A trailing slash is ignored. Anything other
+     * than an https URL without query, fragment or user info is rejected;
+     * plain http is accepted only for a loopback test server, since model
+     * files are not verified against a hash.
+     */
+    @Volatile
+    var endpoint: String = DEFAULT_ENDPOINT
+        set(value) {
+            field = normalizedEndpoint(value)
+        }
 
     @VisibleForTesting
     /** L=128 latent-window graph pair shipped next to the Supertonic base graphs. */
@@ -115,31 +142,7 @@ object ModelManager {
                 ModelFile("Canary-180M-Flash-ONNX", "config.json",
                     revision = CANARY_REVISION),
             )
-            SttModel.NEMOTRON_MULTILINGUAL -> {
-                val base = "Nemotron-3.5-ASR-Streaming-Multilingual-0.6B"
-                files += when (sttBackend) {
-                    // INT8 ONNX uses ConvInteger in the encoder, which the mobile
-                    // onnxruntime-android build does not implement ("Could not find
-                    // an implementation for ConvInteger"), so the ONNX backend on
-                    // Android always uses FP16 (verified on-device). For an int8
-                    // footprint on Android use the LiteRT backend (channelwise int8
-                    // weights with FP32 activations/compute on the CPU runtime).
-                    SttBackend.ONNX -> listOf("encoder.onnx", "encoder.onnx.data",
-                        "decoder.onnx", "decoder.onnx.data", "joint.onnx", "joint.onnx.data",
-                        "vocab.json", "languages.json", "config.json")
-                        .map { ModelFile("$base-ONNX-FP16", it) }
-                    SttBackend.LITERT -> {
-                        val q = if (precision == ModelPrecision.INT8) "INT8" else "FP16"
-                        val revision = nemotronLiteRtRevision(precision)
-                        listOf(
-                            "nemotron-multilingual-encoder.tflite",
-                            "nemotron-multilingual-decoder.tflite",
-                            "nemotron-multilingual-joint.tflite",
-                            "vocab.json", "languages.json", "io_map.json", "config.json",
-                        ).map { ModelFile("$base-LiteRT-$q", it, revision) }
-                    }
-                }
-            }
+            SttModel.NEMOTRON_MULTILINGUAL -> files += transcriberModels(sttBackend, precision)
         }
 
         files += ttsModels(ttsModel, supertonicLatentBuckets)
@@ -159,6 +162,57 @@ object ModelManager {
     internal fun vadModels(): List<ModelFile> = listOf(
         ModelFile("Silero-VAD-v5-ONNX", "silero-vad.onnx"),
     )
+
+    /**
+     * Nemotron-3.5 multilingual recognizer files, shared by the pipeline's
+     * [SttModel.NEMOTRON_MULTILINGUAL] set and [ensureTranscriberModels].
+     */
+    @VisibleForTesting
+    internal fun transcriberModels(
+        backend: SttBackend,
+        precision: ModelPrecision,
+    ): List<ModelFile> {
+        val base = "Nemotron-3.5-ASR-Streaming-Multilingual-0.6B"
+        return when (backend) {
+            // INT8 ONNX uses ConvInteger in the encoder, which the mobile
+            // onnxruntime-android build does not implement ("Could not find
+            // an implementation for ConvInteger"), so the ONNX backend on
+            // Android always uses FP16 (verified on-device). For an int8
+            // footprint on Android use the LiteRT backend (channelwise int8
+            // weights with FP32 activations/compute on the CPU runtime).
+            SttBackend.ONNX -> listOf("encoder.onnx", "encoder.onnx.data",
+                "decoder.onnx", "decoder.onnx.data", "joint.onnx", "joint.onnx.data",
+                "vocab.json", "languages.json", "config.json")
+                .map { ModelFile("$base-ONNX-FP16", it) }
+            SttBackend.LITERT -> {
+                val q = if (precision == ModelPrecision.INT8) "INT8" else "FP16"
+                val revision = nemotronLiteRtRevision(precision)
+                listOf(
+                    "nemotron-multilingual-encoder.tflite",
+                    "nemotron-multilingual-decoder.tflite",
+                    "nemotron-multilingual-joint.tflite",
+                    "vocab.json", "languages.json", "io_map.json", "config.json",
+                ).map { ModelFile("$base-LiteRT-$q", it, revision) }
+            }
+        }
+    }
+
+    /** Streaming Sortformer 4-speaker diarizer. `config.json` travels with the
+     *  graph: the native wrapper checks the graph against the chunk contexts
+     *  and cache period it declares and refuses one it does not describe. */
+    @VisibleForTesting
+    internal fun diarizerModels(): List<ModelFile> =
+        listOf("sortformer-default.onnx", "config.json").map {
+            ModelFile("Sortformer-Diarization-4spk-ONNX", it, SORTFORMER_REVISION)
+        }
+
+    /** ReDimNet2-B6 speaker encoder, with its MIT licence kept beside the
+     *  weights distributed to the device. */
+    @VisibleForTesting
+    internal fun speakerEmbeddingModels(): List<ModelFile> =
+        listOf("ReDimNet2B6.onnx", "LICENSE").map {
+            ModelFile("ReDimNet2-B6-ONNX-FP32", it, REDIMNET_REVISION)
+        }
 
     /** Optional end-of-turn classifier. Android always uses the dynamic-int8
      *  graph: it saves about 22 MB over fp32 and keeps the same raw-audio I/O
@@ -336,7 +390,7 @@ object ModelManager {
         }
         return allFiles.all { model ->
             val dest = File(dir, model.localFilename)
-            dest.exists() && isValidModel(dest, model.filename)
+            dest.exists() && isValidModel(dest, model.filename, model.repo)
         }
     }
 
@@ -360,7 +414,7 @@ object ModelManager {
 
         return ttsModels(ttsModel, supertonicLatentBuckets).all { model ->
             val dest = File(dir, model.localFilename)
-            dest.exists() && isValidModel(dest, model.filename)
+            dest.exists() && isValidModel(dest, model.filename, model.repo)
         }
     }
 
@@ -380,7 +434,7 @@ object ModelManager {
 
         return vadModels().all { model ->
             val dest = File(dir, model.localFilename)
-            dest.exists() && isValidModel(dest, model.filename)
+            dest.exists() && isValidModel(dest, model.filename, model.repo)
         }
     }
 
@@ -402,7 +456,7 @@ object ModelManager {
 
         return llmModels(llmModel).all { model ->
             val dest = File(dir, model.localFilename)
-            dest.exists() && isValidModel(dest, model.filename)
+            dest.exists() && isValidModel(dest, model.filename, model.repo)
         }
     }
 
@@ -600,18 +654,218 @@ object ModelManager {
         ).absolutePath
     }
 
+    /** Path to the [StreamingTranscriber] model directory, without downloading. */
+    fun transcriberModelDir(
+        context: Context,
+        backend: SttBackend = SttBackend.LITERT,
+        precision: ModelPrecision = ModelPrecision.INT8,
+    ): String = File(context.filesDir, transcriberModelDirName(backend, precision)).absolutePath
+
+    /** Path to the [SpeakerDiarizer] model directory, without downloading. */
+    fun diarizerModelDir(context: Context): String =
+        File(context.filesDir, "models_diarizer").absolutePath
+
+    /** Path to the [SpeakerEmbedder] model directory, without downloading. */
+    fun speakerEmbeddingModelDir(context: Context): String =
+        File(context.filesDir, "models_speaker_embedding").absolutePath
+
+    /**
+     * True iff every file of the [StreamingTranscriber] bundle for [backend]
+     * and [precision] is on disk and valid. Cheap and side-effect free.
+     */
+    fun areTranscriberModelsReady(
+        context: Context,
+        backend: SttBackend = SttBackend.LITERT,
+        precision: ModelPrecision = ModelPrecision.INT8,
+    ): Boolean = isResumableSetReady(
+        File(transcriberModelDir(context, backend, precision)),
+        transcriberModelSetKey(backend, precision),
+        transcriberModels(backend, precision),
+    )
+
+    /** True iff the [SpeakerDiarizer] bundle is on disk and valid. */
+    fun areDiarizerModelsReady(context: Context): Boolean = isResumableSetReady(
+        File(diarizerModelDir(context)),
+        diarizerModelSetKey(),
+        diarizerModels(),
+    )
+
+    /** True iff the [SpeakerEmbedder] bundle is on disk and valid. */
+    fun areSpeakerEmbeddingModelsReady(context: Context): Boolean = isResumableSetReady(
+        File(speakerEmbeddingModelDir(context)),
+        speakerEmbeddingModelSetKey(),
+        speakerEmbeddingModels(),
+    )
+
+    /**
+     * Returns the [StreamingTranscriber] model directory, downloading the
+     * Nemotron-3.5 multilingual recognizer if needed: the LiteRT INT8 bundle
+     * (~721 MB) by default, LiteRT FP16 for [ModelPrecision.FP32], or the ONNX
+     * FP16 export (~1.3 GB). Only the recognizer — no VAD, TTS or enhancer.
+     * An interrupted download resumes on the next call.
+     */
+    suspend fun ensureTranscriberModels(
+        context: Context,
+        backend: SttBackend = SttBackend.LITERT,
+        precision: ModelPrecision = ModelPrecision.INT8,
+        onProgress: ((Progress) -> Unit)? = null,
+    ): String = withContext(Dispatchers.IO) {
+        val dir = File(transcriberModelDir(context, backend, precision))
+        ensureResumableSet(
+            dir,
+            transcriberModelSetKey(backend, precision),
+            transcriberModels(backend, precision),
+            onProgress,
+        )
+        dir.absolutePath
+    }
+
+    /**
+     * Returns the [SpeakerDiarizer] model directory, downloading the streaming
+     * Sortformer 4-speaker graph and its config (~475 MB) if needed. An
+     * interrupted download resumes on the next call.
+     */
+    suspend fun ensureDiarizerModels(
+        context: Context,
+        onProgress: ((Progress) -> Unit)? = null,
+    ): String = withContext(Dispatchers.IO) {
+        val dir = File(diarizerModelDir(context))
+        ensureResumableSet(dir, diarizerModelSetKey(), diarizerModels(), onProgress)
+        dir.absolutePath
+    }
+
+    /**
+     * Returns the [SpeakerEmbedder] model directory, downloading ReDimNet2-B6
+     * (~51 MB) if needed. An interrupted download resumes on the next call.
+     */
+    suspend fun ensureSpeakerEmbeddingModels(
+        context: Context,
+        onProgress: ((Progress) -> Unit)? = null,
+    ): String = withContext(Dispatchers.IO) {
+        val dir = File(speakerEmbeddingModelDir(context))
+        ensureResumableSet(
+            dir,
+            speakerEmbeddingModelSetKey(),
+            speakerEmbeddingModels(),
+            onProgress,
+        )
+        dir.absolutePath
+    }
+
+    /** [plannedModelBytes] for the Silero set fetched by [ensureVadModels]. */
+    fun plannedVadBytes(context: Context): Long {
+        val dir = File(vadModelDir(context))
+        return plannedBytes(dir, vadModels(), cacheIsStale(dir, vadModelSetKey()))
+    }
+
+    /** [plannedModelBytes] for the set fetched by [ensureTranscriberModels]. */
+    fun plannedTranscriberBytes(
+        context: Context,
+        backend: SttBackend = SttBackend.LITERT,
+        precision: ModelPrecision = ModelPrecision.INT8,
+    ): Long = plannedResumableBytes(
+        File(transcriberModelDir(context, backend, precision)),
+        transcriberModelSetKey(backend, precision),
+        transcriberModels(backend, precision),
+    )
+
+    /** [plannedModelBytes] for the set fetched by [ensureDiarizerModels]. */
+    fun plannedDiarizerBytes(context: Context): Long = plannedResumableBytes(
+        File(diarizerModelDir(context)),
+        diarizerModelSetKey(),
+        diarizerModels(),
+    )
+
+    /** [plannedModelBytes] for the set fetched by [ensureSpeakerEmbeddingModels]. */
+    fun plannedSpeakerEmbeddingBytes(context: Context): Long = plannedResumableBytes(
+        File(speakerEmbeddingModelDir(context)),
+        speakerEmbeddingModelSetKey(),
+        speakerEmbeddingModels(),
+    )
+
+    /**
+     * Downloads [files] into [dir] under [modelSetKey], resuming a partial
+     * transfer. The markers are written before the download, as
+     * [ensureLlmModels] does, so a retried or restarted run keeps its `.tmp`
+     * files; only a directory whose markers name an older or different set is
+     * cleared. Readiness still requires every file to be complete and valid.
+     */
+    private fun ensureResumableSet(
+        dir: File,
+        modelSetKey: String,
+        files: List<ModelFile>,
+        onProgress: ((Progress) -> Unit)?,
+    ) {
+        dir.mkdirs()
+        val versionFile = File(dir, "version.txt")
+        val setFile = File(dir, MODEL_SET_FILENAME)
+        val hadMarkers = versionFile.exists() || setFile.exists()
+        if (hadMarkers && cacheIsStale(dir, modelSetKey)) {
+            clearModelCache(dir)
+        }
+        setFile.writeText(modelSetKey)
+        versionFile.writeText(MODEL_VERSION.toString())
+        downloadMissingModels(dir, files, onProgress)
+    }
+
+    private fun isResumableSetReady(
+        dir: File,
+        modelSetKey: String,
+        files: List<ModelFile>,
+    ): Boolean = !cacheIsStale(dir, modelSetKey) && files.all { model ->
+        File(dir, model.localFilename).let { it.exists() && isValidModel(it, model.filename, model.repo) }
+    }
+
+    private fun plannedResumableBytes(
+        dir: File,
+        modelSetKey: String,
+        files: List<ModelFile>,
+    ): Long {
+        // Mirrors ensureResumableSet: a directory with no markers is a fresh or
+        // in-progress download, never a stale cache to be wiped.
+        val hadMarkers =
+            File(dir, "version.txt").exists() || File(dir, MODEL_SET_FILENAME).exists()
+        return plannedBytes(dir, files, stale = hadMarkers && cacheIsStale(dir, modelSetKey))
+    }
+
+    @VisibleForTesting
+    internal fun modelUrl(model: ModelFile, origin: String = endpoint): String =
+        "$origin/$MODEL_ORGANIZATION/${model.repo}/resolve/${model.revision}/${model.filename}"
+
+    @VisibleForTesting
+    internal fun normalizedEndpoint(value: String): String {
+        val trimmed = value.trim().trimEnd('/')
+        val uri = runCatching { java.net.URI(trimmed) }.getOrNull()
+        val scheme = uri?.scheme?.lowercase()
+        val host = uri?.host?.lowercase()
+        val loopback = host in setOf("localhost", "127.0.0.1", "[::1]", "::1")
+        require(
+            uri != null &&
+                !host.isNullOrEmpty() &&
+                (scheme == "https" || (scheme == "http" && loopback)) &&
+                uri.rawQuery == null &&
+                uri.rawFragment == null &&
+                uri.rawUserInfo == null
+        ) {
+            "ModelManager.endpoint must be an https URL such as $DEFAULT_ENDPOINT, was '$value'"
+        }
+        return trimmed
+    }
+
     private fun downloadMissingModels(
         dir: File,
         allFiles: List<ModelFile>,
         onProgress: ((Progress) -> Unit)?,
     ) {
+        // One origin for the whole set, even if [endpoint] changes mid-call.
+        val origin = endpoint
         // Byte budget for the progress bar. Weighting every file equally makes
         // the bar lurch through the small JSON assets and then sit still for
         // minutes on the two files that are ~93% of the bytes, so the bar is
         // driven by bytes instead. Cached files are excluded from both sides of
         // the ratio: the bar measures the transfer, not the manifest.
         val pending = allFiles.filterNot { model ->
-            File(dir, model.localFilename).let { it.exists() && isValidModel(it, model.filename) }
+            File(dir, model.localFilename).let { it.exists() && isValidModel(it, model.filename, model.repo) }
         }
         var totalBytes = pending.sumOf { expectedBytes(it) }
         // Bytes belonging to files this call has already finished.
@@ -620,7 +874,7 @@ object ModelManager {
         var completed = 0
         for (model in allFiles) {
             val dest = File(dir, model.localFilename)
-            if (dest.exists() && isValidModel(dest, model.filename)) {
+            if (dest.exists() && isValidModel(dest, model.filename, model.repo)) {
                 completed++
                 continue
             }
@@ -636,7 +890,7 @@ object ModelManager {
             var expected = expectedBytes(model)
             var fileBytes = 0L
 
-            val url = "$BASE_URL/${model.repo}/resolve/${model.revision}/${model.filename}"
+            val url = modelUrl(model, origin)
             downloadFile(url, dest) { bytes, fileTotal ->
                 if (fileTotal > 0 && fileTotal != expected) {
                     totalBytes += fileTotal - expected
@@ -705,7 +959,7 @@ object ModelManager {
     private fun plannedBytes(dir: File, files: List<ModelFile>, stale: Boolean): Long =
         files.sumOf { model ->
             val dest = File(dir, model.localFilename)
-            if (!stale && dest.exists() && isValidModel(dest, model.filename)) 0L
+            if (!stale && dest.exists() && isValidModel(dest, model.filename, model.repo)) 0L
             else expectedBytes(model)
         }
 
@@ -799,6 +1053,42 @@ object ModelManager {
         "v$MODEL_VERSION",
         "profile=LLM",
         "llm=${llmModel.name}",
+    ).joinToString("|")
+
+    @VisibleForTesting
+    internal fun transcriberModelDirName(backend: SttBackend, precision: ModelPrecision): String =
+        "models_transcriber-${transcriberBundle(backend, precision)}"
+
+    private fun transcriberBundle(backend: SttBackend, precision: ModelPrecision): String =
+        when (backend) {
+            SttBackend.ONNX -> "onnx-fp16"
+            SttBackend.LITERT ->
+                if (precision == ModelPrecision.INT8) "litert-int8" else "litert-fp16"
+        }
+
+    @VisibleForTesting
+    internal fun transcriberModelSetKey(backend: SttBackend, precision: ModelPrecision): String =
+        buildList {
+            add("v$MODEL_VERSION")
+            add("profile=TRANSCRIBER")
+            add("bundle=${transcriberBundle(backend, precision)}")
+            if (backend == SttBackend.LITERT) {
+                add("sttRevision=${nemotronLiteRtRevision(precision)}")
+            }
+        }.joinToString("|")
+
+    @VisibleForTesting
+    internal fun diarizerModelSetKey(): String = listOf(
+        "v$MODEL_VERSION",
+        "profile=DIARIZER",
+        "revision=$SORTFORMER_REVISION",
+    ).joinToString("|")
+
+    @VisibleForTesting
+    internal fun speakerEmbeddingModelSetKey(): String = listOf(
+        "v$MODEL_VERSION",
+        "profile=SPEAKER_EMBEDDING",
+        "revision=$REDIMNET_REVISION",
     ).joinToString("|")
 
     private fun cachedModelSet(dir: File): String? =
@@ -1011,6 +1301,17 @@ object ModelManager {
         "model.litertlm" to 297_212_528L,
         "model-lora16-android.litertlm" to 327_438_928L,
         "control-r4-rank16.tflite" to 9_502_720L,
+        // Nemotron multilingual. The LiteRT INT8 and FP16 bundles share file
+        // names, so the INT8 (default) sizes stand in for both until each
+        // response header corrects them.
+        "nemotron-multilingual-encoder.tflite" to 622_758_560L,
+        "nemotron-multilingual-decoder.tflite" to 59_774_636L,
+        "nemotron-multilingual-joint.tflite" to 37_825_828L,
+        "encoder.onnx.data" to 1_236_396_032L,
+        "decoder.onnx.data" to 29_880_320L,
+        "joint.onnx.data" to 18_911_296L,
+        "sortformer-default.onnx" to 474_630_246L,
+        "ReDimNet2B6.onnx" to 51_223_453L,
     )
 
     /** Assumed size of a model file with no [EXPECTED_SIZES] entry. */
@@ -1073,10 +1374,26 @@ object ModelManager {
         "nemotron-multilingual-encoder.tflite" to 600_000_000L, // ~623 MB INT8
         "nemotron-multilingual-decoder.tflite" to 50_000_000L,  // ~60 MB
         "nemotron-multilingual-joint.tflite" to 30_000_000L,    // ~38 MB
+        "sortformer-default.onnx" to 400_000_000L,       // ~475 MB
+        "ReDimNet2B6.onnx" to 45_000_000L,               // ~51 MB
+    )
+
+    /**
+     * Floors that depend on the bundle a file comes from. The LiteRT FP16
+     * Nemotron decoder and joint ship smaller than their INT8 namesakes, so the
+     * filename floors in [MIN_SIZES] rejected every complete FP16 copy and the
+     * download never settled. Keyed by `repo/filename`; checked before
+     * [MIN_SIZES].
+     */
+    private val BUNDLE_MIN_SIZES = mapOf(
+        "Nemotron-3.5-ASR-Streaming-Multilingual-0.6B-LiteRT-FP16/nemotron-multilingual-decoder.tflite"
+            to 25_000_000L, // ~30 MB
+        "Nemotron-3.5-ASR-Streaming-Multilingual-0.6B-LiteRT-FP16/nemotron-multilingual-joint.tflite"
+            to 15_000_000L, // ~19 MB
     )
 
     @VisibleForTesting
-    internal fun isValidModel(file: File, filename: String): Boolean {
+    internal fun isValidModel(file: File, filename: String, repo: String? = null): Boolean {
         if (file.length() == 0L) return false
 
         // speech-core passes one [1, 256] float32 style vector to Kokoro.
@@ -1091,7 +1408,7 @@ object ModelManager {
         }
 
         // Check minimum size for known large files
-        MIN_SIZES[filename]?.let { minSize ->
+        (repo?.let { BUNDLE_MIN_SIZES["$it/$filename"] } ?: MIN_SIZES[filename])?.let { minSize ->
             if (file.length() < minSize) return false
         }
 

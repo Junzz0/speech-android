@@ -35,6 +35,8 @@
 | [Pocket TTS 100M](https://huggingface.co/soniqo/Pocket-TTS-100M-ONNX-INT8) | Потоковый синтез речи (опционально, фиксированный голос Alba) | ~126 МБ | ещё не измерено | Английский |
 | [Supertonic-3](https://soniqo.audio/ru/guides/supertonic) | Синтез речи (LiteRT, flow-matching, G2P-free, 44,1 кГц) | [~380 МБ](https://huggingface.co/soniqo/Supertonic-3-LiteRT) | 832 МБ | 31 |
 | [Silero VAD v5](https://soniqo.audio/ru/guides/vad/android) | Определение голосовой активности | [2 МБ](https://huggingface.co/soniqo/Silero-VAD-v5-ONNX) | <10 МБ | Любой |
+| [Sortformer, 4 диктора](https://huggingface.co/soniqo/Sortformer-Diarization-4spk-ONNX) | Потоковая диаризация дикторов (опционально) | [475 МБ](https://huggingface.co/soniqo/Sortformer-Diarization-4spk-ONNX) | ещё не измерено | Любой |
+| [ReDimNet2-B6](https://huggingface.co/soniqo/ReDimNet2-B6-ONNX-FP32) | Эмбеддинги дикторов (опционально) | [51 МБ](https://huggingface.co/soniqo/ReDimNet2-B6-ONNX-FP32) | ещё не измерено | Любой |
 | [DeepFilterNet3](https://soniqo.audio/ru/guides/denoise/android) | Шумоподавление | [~8 МБ](https://huggingface.co/soniqo/DeepFilterNet3-ONNX) | по умолчанию не загружается | Любой |
 | [FunctionGemma 270M](https://soniqo.audio/ru/guides/function-calls) | Локальная LLM — структурированные вызовы функций / инструментов | [283 МБ](https://huggingface.co/soniqo/FunctionGemma-270M-LiteRT-LM) | зависит от runtime приложения | EN-tuned |
 
@@ -160,6 +162,35 @@ detector.flush()
 пред-речевой буфер, сохраняющий первый слог. Этот путь использует
 `ModelManager.ensureVadModels()` и отдельный кеш `models_vad/`, поэтому пакеты
 STT/TTS не скачиваются никогда.
+
+### Компоненты для транскрипции встреч
+
+Приложения, которые сами ведут запись и сегментацию — диктофон для встреч, приложение для заметок, — могут загружать распознаватель, диаризатор и кодировщик дикторов по отдельности, без конвейера. У каждого своя загрузка и свой каталог кеша, и ни один не принимает продуктовых решений: транскрайбер возвращает текст, диаризатор — вероятности дикторов по кадрам, кодировщик — 192-мерный вектор голоса. Пороги, реплики, метки дикторов и сопоставление голосов остаются в приложении.
+
+```kotlin
+// Необязательно: выбранное пользователем зеркало со структурой Hugging Face.
+ModelManager.endpoint = "https://hf-mirror.com"
+
+val transcriber = StreamingTranscriber(
+    TranscriberConfig(modelDir = ModelManager.ensureTranscriberModels(context))
+)
+transcriber.beginStream()
+transcriber.pushAudio(samples)            // 16 кГц моно float32; текст на данный момент
+val text = transcriber.endStream().text
+
+val diarizer = SpeakerDiarizer(
+    DiarizerConfig(modelDir = ModelManager.ensureDiarizerModels(context))
+)
+val frames = diarizer.pushAudio(samples)  // [кадры x diarizer.speakers], часто пусто
+val tail = diarizer.endStream()           // когда запись закончилась
+
+val embedder = SpeakerEmbedder(
+    SpeakerEmbedderConfig(modelDir = ModelManager.ensureSpeakerEmbeddingModels(context))
+)
+val voice = embedder.embed(speech)        // не меньше 2 с; FloatArray(192)
+```
+
+По умолчанию `TranscriberConfig.language` равен `"auto"` — это промпт автоматического языка Nemotron, как в speech-swift; `"en-US"`, `"pt_BR"` или просто `"fr"` фиксируют один язык. Каждая транскрипция содержит время слов в секундах от `beginStream`, взятое из кадра энкодера, на котором был выдан каждый токен. Sortformer — один поток на запись; он отвечает примерно на 30 секунд позже звука, потому что опубликованный экспорт декодирует 27,2 секунды за вызов. `ModelDownloadWorker.enqueue(context, includePipeline = false, includeTranscriber = true, includeDiarizer = true, includeSpeakerEmbedding = true)` скачивает три набора в фоне.
 
 ## Сборка из исходного кода
 
